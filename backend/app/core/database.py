@@ -23,6 +23,10 @@ async def init_db() -> None:
     import app.models.repair_estimate  # noqa: F401
     import app.models.market_value  # noqa: F401
     import app.models.opportunity  # noqa: F401
+    import app.models.common_problem  # noqa: F401
+    import app.models.car  # noqa: F401
+    import app.models.cars_common_problems  # noqa: F401
+    import app.models.exterior_condition  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

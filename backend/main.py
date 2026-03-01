@@ -26,6 +26,20 @@ async def startup():
         except Exception as e:
             logger.warning("Could not initialise database tables: %s", e)
 
+    if settings.environment == "development" or settings.seed_data:
+        try:
+            from app.core.database import AsyncSessionLocal
+            from app.core.seed_data import seed_reference_data
+            async with AsyncSessionLocal() as session:
+                await seed_reference_data(session)
+                logger.info("Reference data seeded")
+        except Exception as e:
+            logger.warning("Could not seed reference data: %s", e)
+
+    from app.workers.detection_worker import register_detection_worker
+    register_detection_worker(bus)
+    logger.info("Detection worker registered")
+
     from app.workers.ingestion_worker import start_ingestion_worker
     asyncio.create_task(start_ingestion_worker(bus))
     logger.info("Ingestion worker scheduled")
