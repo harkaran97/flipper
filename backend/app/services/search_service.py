@@ -46,3 +46,24 @@ async def search_fault_intelligence(
     logger.info("Searching fault intelligence: %s", query)
     result = await adapter.web_search(query)
     return result
+
+
+async def search_market_value(
+    make: str,
+    model: str,
+    year: int,
+    write_off_label: str,
+) -> SearchResult:
+    """
+    Fallback market value search via LinkUp.
+    Only fires when eBay returns fewer than 3 sold comps.
+
+    Query format: "{make} {model} {year} {write_off_label} sold price UK"
+    Example: "BMW 3 Series 2010 cat n sold price UK"
+    """
+    adapter = get_search_adapter()
+    label_part = f" {write_off_label}" if write_off_label else ""
+    query = f"{make} {model} {year}{label_part} sold price UK"
+    logger.info("Searching market value fallback: %s", query)
+    result = await adapter.web_search(query)
+    return result
