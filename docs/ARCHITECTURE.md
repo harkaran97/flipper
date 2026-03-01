@@ -398,7 +398,7 @@ Take: median of bottom 5 results
 | 1 | Repo scaffold + DB models + event system + healthcheck | ✅ |
 | 2 | eBay adapter (stub) + ingestion worker | ✅ |
 | 3 | AI problem detection service + fault cache | ✅ |
-| 4 | Repair estimation service (static map + cache) | 🔲 |
+| 4 | Repair estimation service (static map + cache) | ✅ |
 | 5 | Market value service (eBay sold + LinkUp fallback) | 🔲 |
 | 6 | Opportunity scoring engine | 🔲 |
 | 7 | REST API endpoints | 🔲 |
@@ -448,4 +448,4 @@ ALERT_DISTANCE_MILES=50
 
 ---
 
-*Last updated: Milestone 3 — AI problem detection service + fault cache complete*
+*Last updated: Milestone 4 — Repair estimation service with live parts pricing complete*
