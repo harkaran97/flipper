@@ -1,0 +1,202 @@
+# TASK 009b — EAS Build Configuration
+
+**Reference:** `docs/ARCHITECTURE.md`, `docs/GLOBAL_INSTRUCTIONS.md`
+**Milestone:** 9b (addendum to TASK_009)
+**Depends on:** TASK_009 merged to main
+**Engineer:** Claude Code
+
+---
+
+## Objective
+
+Add Expo Application Services (EAS) configuration to the mobile project.
+This enables cloud builds without any local development environment.
+
+No new features. No backend changes. Pure build configuration.
+
+---
+
+## Context to load
+
+- `mobile/app.json`
+- `mobile/package.json`
+- `mobile/app/(tabs)/_layout.tsx`
+
+---
+
+## What to Build
+
+### 1. `mobile/eas.json`
+
+```json
+{
+  "cli": {
+    "version": ">= 10.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": false,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://flipper-production-dca0.up.railway.app/api/v1"
+      }
+    },
+    "preview": {
+      "developmentClient": false,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://flipper-production-dca0.up.railway.app/api/v1"
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://flipper-production-dca0.up.railway.app/api/v1"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
+```
+
+### 2. Update `mobile/app.json`
+
+Add `owner` field and `extra` config for EAS:
+
+```json
+{
+  "expo": {
+    "name": "Flipper",
+    "slug": "flipper",
+    "owner": "flipper-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "backgroundColor": "#FFFFFF"
+    },
+    "ios": {
+      "bundleIdentifier": "com.flipper.app",
+      "supportsTablet": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#00C853"
+        }
+      ]
+    ],
+    "scheme": "flipper",
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+      }
+    }
+  }
+}
+```
+
+Note: `REPLACE_WITH_EAS_PROJECT_ID` is a placeholder.
+The real project ID comes from expo.dev after the project
+is created there. This will be filled in manually.
+
+### 3. Update `mobile/package.json`
+
+Add EAS CLI as a dev dependency:
+
+```json
+{
+  "devDependencies": {
+    "eas-cli": "^10.0.0"
+  }
+}
+```
+
+Also add a build script:
+
+```json
+{
+  "scripts": {
+    "start": "expo start",
+    "build:preview": "eas build --platform ios --profile preview",
+    "build:production": "eas build --platform ios --profile production"
+  }
+}
+```
+
+### 4. Create `mobile/assets/icon.png` and `mobile/assets/splash.png`
+
+Generate simple placeholder assets:
+- `icon.png` — 1024x1024px, white background, black "F" in Inter Bold, centred
+- `splash.png` — 1284x2778px, white background, "Flipper" in Inter Bold 48sp, centred, with green `#00C853` dot before the F
+
+If image generation is not possible, create a note file:
+`mobile/assets/ASSETS_NEEDED.md` explaining the required dimensions
+so they can be created manually or via a design tool.
+
+---
+
+## Acceptance Criteria
+
+### 1. EAS config valid
+```bash
+cat mobile/eas.json | python3 -m json.tool > /dev/null && echo "eas.json: valid JSON OK"
+```
+
+### 2. All three build profiles present
+```bash
+python3 -c "
+import json
+config = json.load(open('mobile/eas.json'))
+builds = config['build']
+assert 'development' in builds
+assert 'preview' in builds
+assert 'production' in builds
+print('Build profiles: OK')
+"
+```
+
+### 3. Railway URL in all profiles
+```bash
+python3 -c "
+import json
+config = json.load(open('mobile/eas.json'))
+url = 'https://flipper-production-dca0.up.railway.app/api/v1'
+for profile in config['build'].values():
+    assert profile.get('env', {}).get('EXPO_PUBLIC_API_URL') == url
+print('Railway URL in all profiles: OK')
+"
+```
+
+### 4. app.json valid
+```bash
+cat mobile/app.json | python3 -m json.tool > /dev/null && echo "app.json: valid JSON OK"
+```
+
+---
+
+## After Completion
+
+- Commit: `feat: TASK_009b — EAS build configuration`
+- No ARCHITECTURE.md change needed (addendum task)
+- Report must confirm all 4 smoke tests pass
+
+---
+
+*Task authored by: Flipper CTO/CPO*
+*Addendum to: TASK_009*
+*Next: Human steps to connect Expo account (see DEPLOYMENT.md)*
