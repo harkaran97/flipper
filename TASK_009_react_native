@@ -1,0 +1,828 @@
+# TASK 009 — React Native iOS App (Expo)
+
+**Reference:** `docs/ARCHITECTURE.md`, `docs/GLOBAL_INSTRUCTIONS.md`
+**Milestone:** 9 of 10
+**Depends on:** TASK_001 through TASK_008 — all merged to main
+**Engineer:** Claude Code
+
+---
+
+## Before you start
+
+Read this entire spec before writing a single line of code.
+Flag any ambiguities. State your plan. Proceed only when ready.
+
+This task lives in a new top-level directory: `mobile/`
+It is completely separate from `backend/`. Do not touch backend code.
+
+---
+
+## Tech Stack
+
+- **React Native** with **Expo SDK 51+**
+- **TypeScript** — strict mode
+- **Expo Router** — file-based navigation (tabs + stack)
+- **NativeWind v4** — Tailwind CSS for React Native styling
+- **Axios** — HTTP client for API calls
+- **Expo Notifications** — push notification registration
+- **AsyncStorage** — local persistence (saved state, settings)
+- **React Query (TanStack Query)** — data fetching, caching, refetch
+
+---
+
+## Project Setup
+
+```
+mobile/
+  app/
+    _layout.tsx           — root layout, tab navigator
+    (tabs)/
+      _layout.tsx         — tab bar config
+      index.tsx           — Opportunities tab
+      saved.tsx           — Saved tab
+      builds.tsx          — My Builds tab
+    opportunity/
+      [id].tsx            — Detail screen (stack)
+  components/
+    OpportunityCard.tsx
+    DetailHeader.tsx
+    FaultRow.tsx
+    PartsSection.tsx
+    BadgeClass.tsx
+    BadgeRisk.tsx
+    CarLogo.tsx
+    SupplierLogo.tsx
+    EmptyState.tsx
+    FilterBar.tsx
+  lib/
+    api.ts                — API client (Axios instance)
+    types.ts              — TypeScript types mirroring backend schemas
+    formatters.ts         — Currency, days, date formatters
+    logos.ts              — Car make → logo URL mapping
+    supplierLogos.ts      — Supplier → logo URL mapping
+  constants/
+    colours.ts            — Design tokens
+    config.ts             — API_BASE_URL, env config
+  hooks/
+    useOpportunities.ts
+    useSavedOpportunities.ts
+    useOpportunityDetail.ts
+    useRefresh.ts
+  assets/
+    icon.png
+    splash.png
+  app.json
+  package.json
+  tsconfig.json
+  tailwind.config.js
+  babel.config.js
+```
+
+---
+
+## Design System
+
+### Colour tokens — `constants/colours.ts`
+
+```typescript
+export const colours = {
+  // Backgrounds
+  bg: '#FFFFFF',
+  bgSecondary: '#F7F7F7',
+  bgCard: '#FFFFFF',
+  border: '#EEEEEE',
+
+  // Typography
+  textPrimary: '#0A0A0A',
+  textSecondary: '#6B6B6B',
+  textMuted: '#AAAAAA',
+
+  // Accent — profit green
+  green: '#00C853',
+  greenLight: '#E8F5E9',
+  greenText: '#00A843',
+
+  // Opportunity class
+  strong: '#00C853',       // green
+  speculative: '#FFB300',  // amber
+  worthALook: '#FF6D00',   // orange
+  exclude: '#CCCCCC',      // never shown
+
+  // Risk
+  riskHigh: '#FF1744',
+  riskMedium: '#FFB300',
+  riskLow: '#AAAAAA',
+
+  // Write-off
+  catS: '#FF1744',
+  catN: '#FF6D00',
+  clean: '#00C853',
+
+  // UI
+  white: '#FFFFFF',
+  black: '#0A0A0A',
+  tabActive: '#0A0A0A',
+  tabInactive: '#AAAAAA',
+}
+```
+
+### Typography
+
+Font: **Inter** (via `expo-font` or system default)
+
+| Use | Size | Weight |
+|---|---|---|
+| Screen title | 28sp | 700 Bold |
+| Card car name | 17sp | 600 SemiBold |
+| Profit figure | 22sp | 700 Bold |
+| Price / days | 15sp | 400 Regular |
+| Badge text | 11sp | 600 SemiBold |
+| Section label | 13sp | 500 Medium |
+| Body | 15sp | 400 Regular |
+
+All text must support iOS Dynamic Type — use `allowFontScaling={true}`.
+Your dad uses large text. Never hard-clip text.
+
+---
+
+## API Client — `lib/api.ts`
+
+```typescript
+import axios from 'axios'
+import { API_BASE_URL } from '../constants/config'
+
+export const api = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 10000,
+  headers: { 'Content-Type': 'application/json' },
+})
+```
+
+### `constants/config.ts`
+
+```typescript
+export const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1'
+```
+
+When Railway URL is known, set `EXPO_PUBLIC_API_URL` in `.env`.
+
+---
+
+## TypeScript Types — `lib/types.ts`
+
+Mirror the backend Pydantic schemas exactly:
+
+```typescript
+export type OpportunityClass = 'strong' | 'speculative' | 'worth_a_look' | 'exclude'
+export type RiskLevel = 'low' | 'medium' | 'high'
+export type MarketValueConfidence = 'high' | 'medium' | 'low'
+
+export interface OpportunityCard {
+  id: string
+  listing_id: string
+  title: string
+  make: string
+  model: string
+  year: number | null
+  listing_url: string
+  listing_price_pence: number
+  parts_cost_min_pence: number
+  parts_cost_max_pence: number
+  market_value_pence: number
+  true_profit_pence: number
+  true_margin_pct: number
+  total_man_days: number
+  opportunity_class: OpportunityClass
+  risk_level: RiskLevel
+  write_off_category: string
+  has_unpriced_faults: boolean
+  profit_is_floor_estimate: boolean
+  market_value_confidence: MarketValueConfidence
+  market_value_comp_count: number
+  created_at: string
+  // local only
+  saved?: boolean
+  status?: 'new' | 'saved' | 'active_build'
+  detected_faults_summary?: string  // e.g. "Timing chain, DPF"
+}
+
+export interface SupplierPrice {
+  supplier: string
+  price_pence: number
+  url: string
+  in_stock: boolean
+}
+
+export interface PartResult {
+  part_name: string
+  part_category: string
+  quantity: string
+  is_consumable: boolean
+  suppliers: SupplierPrice[]
+}
+
+export interface FaultPartsBreakdown {
+  fault_type: string
+  parts: PartResult[]
+  fault_parts_total_min_pence: number
+  fault_parts_total_max_pence: number
+}
+
+export interface FaultDetail {
+  fault_type: string
+  severity: string
+  description: string | null
+  labour_days: number
+}
+
+export interface OpportunityDetail extends OpportunityCard {
+  faults: FaultDetail[]
+  parts_breakdown: FaultPartsBreakdown[]
+  effort_cost_pence: number
+  day_rate_pence: number
+  unpriced_fault_types: string[]
+  linkup_fallback_used: boolean
+}
+```
+
+---
+
+## Formatters — `lib/formatters.ts`
+
+```typescript
+// £1,200 from 120000 pence
+export const formatPrice = (pence: number): string =>
+  `£${(pence / 100).toLocaleString('en-GB', { minimumFractionDigits: 0 })}`
+
+// +£1,790 — always show + for profit
+export const formatProfit = (pence: number): string =>
+  `+${formatPrice(pence)}`
+
+// 2.5 days / 1.0 day
+export const formatDays = (days: number): string =>
+  `${days} ${days === 1 ? 'day' : 'days'}`
+
+// fault_type → display: "timing_chain_failure" → "Timing chain"
+export const formatFaultType = (ft: string): string =>
+  ft.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    .replace(' Failure', '').replace(' Fault', '')
+
+// faults array → summary string for card: "Timing chain, DPF"
+export const formatFaultSummary = (faults: string[]): string =>
+  faults.map(formatFaultType).slice(0, 3).join(', ') +
+  (faults.length > 3 ? ` +${faults.length - 3}` : '')
+```
+
+---
+
+## Car Manufacturer Logos — `lib/logos.ts`
+
+Use the Car Logos API at `https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/`
+
+```typescript
+// Maps make name → logo image URL
+// Falls back to null if not found (show text instead)
+
+const MAKE_LOGO_MAP: Record<string, string> = {
+  'BMW': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/bmw.png',
+  'Mercedes': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/mercedes-benz.png',
+  'Audi': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/audi.png',
+  'Volkswagen': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/volkswagen.png',
+  'VW': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/volkswagen.png',
+  'Ford': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/ford.png',
+  'Vauxhall': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/vauxhall.png',
+  'Toyota': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/toyota.png',
+  'Honda': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/honda.png',
+  'Nissan': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/nissan.png',
+  'Land Rover': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/land-rover.png',
+  'Jaguar': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/jaguar.png',
+  'Volvo': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/volvo.png',
+  'Peugeot': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/peugeot.png',
+  'Renault': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/renault.png',
+  'Seat': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/seat.png',
+  'Skoda': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/skoda.png',
+  'Hyundai': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/hyundai.png',
+  'Kia': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/kia.png',
+  'Mazda': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/mazda.png',
+  'Subaru': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/subaru.png',
+  'Mitsubishi': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/mitsubishi.png',
+  'Porsche': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/porsche.png',
+  'Fiat': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/fiat.png',
+  'Alfa Romeo': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/alfa-romeo.png',
+  'Citroen': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/citroen.png',
+  'Mini': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/mini.png',
+  'Tesla': 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb/tesla.png',
+}
+
+export const getCarLogoUrl = (make: string): string | null =>
+  MAKE_LOGO_MAP[make] ?? null
+```
+
+### `components/CarLogo.tsx`
+
+```typescript
+// Displays car manufacturer badge
+// 40x40 circular image with grey fallback if logo not found
+// Never crashes — always shows something
+```
+
+---
+
+## Supplier Logos — `lib/supplierLogos.ts`
+
+Use official favicon/logo URLs for each supplier:
+
+```typescript
+export const SUPPLIER_LOGOS: Record<string, string> = {
+  'GSF Car Parts': 'https://www.gsf.co.uk/favicon.ico',
+  'Euro Car Parts': 'https://www.eurocarparts.com/favicon.ico',
+  'The Parts People': 'https://thepartspeople.co.uk/favicon.ico',
+  'Autodoc': 'https://www.autodoc.co.uk/favicon.ico',
+  'eBay Motors Parts': 'https://www.ebay.co.uk/favicon.ico',
+  'Andrew Page': 'https://www.andrewpage.co.uk/favicon.ico',
+}
+
+export const getSupplierLogo = (supplier: string): string | null =>
+  SUPPLIER_LOGOS[supplier] ?? null
+```
+
+### `components/SupplierLogo.tsx`
+
+```typescript
+// 24x24 supplier favicon with text fallback
+// Shown inline with supplier name and price in parts section
+```
+
+---
+
+## Screen Specifications
+
+### Tab 1 — Opportunities (`app/(tabs)/index.tsx`)
+
+**Header:**
+```
+Flipper                    [🔔]
+```
+- "Flipper" in Inter Bold 28sp, black
+- Bell icon top right — tappable, no action for MVP (Phase 2)
+
+**Filter bar (horizontal scroll, below header):**
+```
+[All] [Strong 🟢] [Speculative] [Worth a Look]
+```
+- Pill buttons, single select
+- Default: All
+- Filters the list client-side
+
+**Opportunity card** (white card, 1px `#EEEEEE` border, 12px radius):
+
+```
+[CarLogo 40x40]  BMW 3 Series 2010        [STRONG]
+                 £1,200 asking
+                 +£1,790 profit  ·  2.5 days
+                 Timing chain, DPF    [Cat N] [⚠ Med]
+```
+
+Layout details:
+- Car logo: 40x40 circle, left aligned
+- Make/Model/Year: 17sp SemiBold, beside logo
+- Class badge: right aligned, coloured pill
+- Asking price: 13sp, muted grey, below name
+- Profit: 22sp Bold green `#00C853`, dominant
+- Days: 15sp grey, separated by `·`
+- Fault summary: 13sp muted, bottom left
+- Write-off badge: small pill, orange for Cat N, red for Cat S, hidden if clean
+- Risk badge: small pill with icon — ⚠ for medium, 🔴 for high, hidden if low
+
+**Tap card** → navigate to detail screen
+
+**Swipe left on card** → reveal "Save" action (bookmark icon, dark)
+**Swipe left again / tap Save** → marks as saved, moves to Saved tab
+
+**Pull to refresh** → calls `POST /api/v1/refresh`, then refetches feed
+
+**Empty state** (no opportunities):
+```
+🔍
+No opportunities yet, Ketan.
+Flipper is scanning eBay for deals.
+Pull down to check again.
+```
+
+---
+
+### Tab 2 — Saved (`app/(tabs)/saved.tsx`)
+
+Same card layout as Opportunities tab.
+Filtered to `saved === true` opportunities (stored in AsyncStorage).
+
+**Empty state:**
+```
+🔖
+Nothing saved yet.
+Swipe left on any opportunity to save it.
+```
+
+**Swipe left on card** → reveal "Remove" action
+**Tap card** → same detail screen
+
+---
+
+### Tab 3 — My Builds (`app/(tabs)/builds.tsx`)
+
+Same card layout.
+Filtered to `status === 'active_build'`.
+
+**Empty state:**
+```
+🔧
+No active builds.
+Save an opportunity and mark it as a build to track it here.
+```
+
+**How to promote to build:**
+On detail screen, a "Mark as Build" button promotes the opportunity.
+Status stored in AsyncStorage keyed by opportunity ID.
+
+---
+
+### Detail Screen (`app/opportunity/[id].tsx`)
+
+**Back navigation:** `← Opportunities` (or ← Saved / ← My Builds depending on origin)
+
+**Header section:**
+```
+[CarLogo 56x56]
+BMW 3 Series 2010
+£1,200 asking price
+```
+
+**Profit hero:**
+```
++£1,790 profit
+47% margin  ·  2.5 days work
+```
+- Profit in 32sp Bold green
+- Margin and days in 15sp muted below
+
+**Classification row:**
+```
+[STRONG 🟢]  [Cat N]  [Risk: Medium ⚠]
+```
+
+**Unpriced faults warning** (if `has_unpriced_faults === true`):
+```
+⚠ Profit estimate is a floor figure — some faults could not be priced.
+```
+Yellow/amber background banner, 13sp.
+
+**Market value section:**
+```
+Market value
+£3,800 median  ·  5 sold comps  ·  High confidence
+```
+
+**Faults section:**
+```
+What's wrong
+─────────────────────────────
+🔴 Timing chain failure       3.5 days
+   Critical — engine drivetrain
+─────────────────────────────
+🟡 DPF fault                  0.5 days
+   High — exhaust system
+```
+Severity colour: 🔴 critical, 🟠 high, 🟡 medium, ⚪ low
+
+**Parts breakdown section:**
+```
+Parts needed
+─────────────────────────────
+Timing chain failure
+
+  Timing chain kit
+  [GSF logo] GSF Car Parts    £87  [→]
+  [ECP logo] Euro Car Parts   £94  [→]
+  [TPP logo] The Parts People £82  [→]
+
+  Engine oil (5L) — consumable
+  [GSF logo] GSF Car Parts    £22  [→]
+
+─────────────────────────────
+DPF fault
+
+  DPF filter
+  [GSF logo] GSF Car Parts    £145  [→]
+```
+
+- Each supplier row: logo (24x24) + name + price + arrow
+- Arrow `[→]` opens URL in device browser (`Linking.openURL`)
+- Consumable parts shown with subtle "consumable" label
+- Section total per fault at bottom: `Est. parts: £109–£176`
+
+**Effort cost section:**
+```
+Effort cost
+2.5 days × £150/day = £375
+```
+13sp muted text
+
+**Action buttons (bottom, sticky):**
+```
+[View on eBay]          [Mark as Build / Remove Build]
+```
+- View on eBay: opens `listing_url` in browser, full width primary green button
+- Mark as Build: secondary outlined button, toggles `status` in AsyncStorage
+
+---
+
+## Tab Bar
+
+Bottom tab bar, icon only, no labels:
+
+| Tab | Icon | Active colour |
+|---|---|---|
+| Opportunities | `trending-up` (Ionicons) | `#0A0A0A` |
+| Saved | `bookmark` (Ionicons) | `#0A0A0A` |
+| My Builds | `construct` (Ionicons) | `#0A0A0A` |
+
+Active tab icon: black. Inactive: `#AAAAAA`.
+No labels. Clean.
+
+---
+
+## Data Fetching — React Query Hooks
+
+### `hooks/useOpportunities.ts`
+
+```typescript
+// Fetches GET /api/v1/opportunities
+// Merges saved/status state from AsyncStorage
+// Refetches every 60 seconds (background polling)
+// Returns: { opportunities, isLoading, isError, refetch }
+```
+
+### `hooks/useOpportunityDetail.ts`
+
+```typescript
+// Fetches GET /api/v1/opportunities/{id}
+// Merges saved/status from AsyncStorage
+// Returns: { opportunity, isLoading, isError }
+```
+
+### `hooks/useRefresh.ts`
+
+```typescript
+// Calls POST /api/v1/refresh
+// Polls GET /api/v1/refresh/{job_id} until status is complete/failed
+// Returns: { triggerRefresh, isRefreshing, lastRefreshed }
+```
+
+---
+
+## Local State — AsyncStorage
+
+Two keys:
+
+```typescript
+// Saved opportunity IDs
+const SAVED_KEY = 'flipper:saved'  // string[] of opportunity IDs
+
+// Build statuses
+const BUILDS_KEY = 'flipper:builds'  // Record<string, 'active_build'>
+```
+
+Helper functions in `lib/storage.ts`:
+- `getSavedIds(): Promise<string[]>`
+- `toggleSaved(id: string): Promise<void>`
+- `getBuildStatuses(): Promise<Record<string, string>>`
+- `markAsBuild(id: string): Promise<void>`
+- `removeFromBuild(id: string): Promise<void>`
+
+---
+
+## Push Notifications
+
+### Registration
+
+On app first launch, request notification permissions:
+
+```typescript
+// In root _layout.tsx on mount:
+const { status } = await Notifications.requestPermissionsAsync()
+if (status === 'granted') {
+  const token = await Notifications.getExpoPushTokenAsync()
+  // POST to backend: /api/v1/device-tokens
+  // { token: token.data, platform: 'ios' }
+  await api.post('/device-tokens', { token: token.data, platform: 'ios' })
+}
+```
+
+**Backend endpoint needed:**
+Add `POST /api/v1/device-tokens` to `backend/app/api/` that stores
+the token in a new `device_tokens` table. This is a small backend
+addition — implement it as part of this task.
+
+**Device tokens table:**
+```python
+class DeviceToken(Base):
+    __tablename__ = "device_tokens"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    token: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
+    platform: Mapped[str] = mapped_column(String(10), default="ios")
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+```
+
+**Push trigger:**
+In `opportunity_scorer.py`, after storing STRONG opportunity, send
+Expo push notification:
+
+```python
+# Only if opportunity_class == "strong"
+await send_push_notification(
+    title="🔥 New flip opportunity",
+    body=f"{listing.title[:40]} — {format_profit(opportunity.true_profit_pence)}",
+)
+```
+
+Use Expo Push API (free, no APNs certificate needed for Expo Go):
+```
+POST https://exp.host/--/api/v2/push/send
+{
+  "to": [token],
+  "title": "🔥 New flip opportunity",
+  "body": "BMW 320d 2010 — +£1,790 profit",
+  "data": { "opportunityId": "..." }
+}
+```
+
+Add `backend/app/services/push_service.py` implementing this call.
+
+---
+
+## `app.json` config
+
+```json
+{
+  "expo": {
+    "name": "Flipper",
+    "slug": "flipper",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "backgroundColor": "#FFFFFF"
+    },
+    "ios": {
+      "bundleIdentifier": "com.flipper.app",
+      "supportsTablet": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#00C853"
+        }
+      ]
+    ],
+    "scheme": "flipper"
+  }
+}
+```
+
+---
+
+## `package.json` dependencies
+
+```json
+{
+  "dependencies": {
+    "expo": "~51.0.0",
+    "expo-router": "~3.5.0",
+    "expo-font": "~12.0.0",
+    "expo-notifications": "~0.28.0",
+    "expo-linking": "~6.3.0",
+    "expo-status-bar": "~1.12.0",
+    "react": "18.2.0",
+    "react-native": "0.74.0",
+    "nativewind": "^4.0.0",
+    "tailwindcss": "^3.4.0",
+    "axios": "^1.7.0",
+    "@tanstack/react-query": "^5.0.0",
+    "@react-native-async-storage/async-storage": "^1.23.0",
+    "react-native-gesture-handler": "~2.16.0",
+    "react-native-reanimated": "~3.10.0",
+    "@expo/vector-icons": "^14.0.0"
+  }
+}
+```
+
+---
+
+## What NOT to Build
+
+- No authentication / login screen
+- No eBay OAuth / messaging
+- No settings screen (Phase 2)
+- No dark mode toggle (defaults to light)
+- No Android-specific styling (iOS only for MVP)
+- No chart/graph views
+
+---
+
+## Acceptance Criteria
+
+### 1. Project structure correct
+```bash
+ls mobile/app mobile/components mobile/lib mobile/hooks mobile/constants
+# All directories exist
+echo "Project structure: OK"
+```
+
+### 2. TypeScript compiles without errors
+```bash
+cd mobile
+npx tsc --noEmit
+echo "TypeScript: OK"
+```
+
+### 3. All formatters correct
+```bash
+cd mobile
+node -e "
+const { formatPrice, formatProfit, formatDays, formatFaultType } = require('./lib/formatters')
+// Note: run after ts-node or compile first
+console.log(formatPrice(120000))   // £1,200
+console.log(formatProfit(179000))  // +£1,790
+console.log(formatDays(2.5))       // 2.5 days
+console.log(formatDays(1.0))       // 1 day
+console.log(formatFaultType('timing_chain_failure'))  // Timing chain
+"
+```
+
+### 4. Car logo mapping has minimum 20 makes
+```bash
+cd mobile
+node -e "
+const { MAKE_LOGO_MAP } = require('./lib/logos')
+const count = Object.keys(MAKE_LOGO_MAP).length
+console.log('Car makes mapped:', count)
+console.log(count >= 20 ? 'Car logos: OK' : 'FAIL — need 20+ makes')
+"
+```
+
+### 5. API client configured correctly
+```bash
+cd mobile
+node -e "
+const config = require('./constants/config')
+console.log('API_BASE_URL:', config.API_BASE_URL)
+console.log('API config: OK')
+"
+```
+
+### 6. Expo project valid
+```bash
+cd mobile
+npx expo-doctor
+# Should report no critical issues
+```
+
+---
+
+## How to Preview on iPhone
+
+Once built:
+
+1. Install **Expo Go** from App Store on your dad's iPhone
+2. Run `cd mobile && npx expo start`
+3. Scan QR code with iPhone camera
+4. App opens in Expo Go instantly
+
+For the API connection during dev:
+- Backend running locally: use your Mac's local IP e.g. `http://192.168.1.x:8000/api/v1`
+- Backend on Railway: set `EXPO_PUBLIC_API_URL=https://your-app.railway.app/api/v1` in `mobile/.env`
+
+---
+
+## After Completion
+
+- Update `ARCHITECTURE.md` Milestone 9 → ✅
+- Commit: `feat: TASK_009 — React Native iOS app with Expo`
+- Report must include:
+  - All 6 smoke test results
+  - Screenshot or description of each screen component built
+  - Any deviations with justification
+  - Confirmation that `POST /api/v1/device-tokens` backend endpoint was added
+
+---
+
+*Task authored by: Flipper CTO/CPO*
+*Depends on: TASK_001 through TASK_008*
+*Next task: TASK_010 — Go Live (real APIs, end-to-end test)*
