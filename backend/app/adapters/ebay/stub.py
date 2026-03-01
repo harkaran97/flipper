@@ -67,38 +67,40 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
         ]
 
     async def search_sold(self, make: str, model: str, year: int) -> list[SoldListing]:
+        # Realistic UK spares/repair sold comps — median 380000p (£3,800)
+        # Prices match STUB_SOLD_COMPS spec for TASK_006 tests
         return [
             SoldListing(
-                title=f"{make} {model} {year} - Good Condition",
-                sold_price_pence=750000,
+                title="BMW 320d SE spares repair",
+                sold_price_pence=350000,
                 year=year,
                 make=make,
                 model=model,
             ),
             SoldListing(
-                title=f"{make} {model} {year} - Low Mileage",
-                sold_price_pence=820000,
+                title="BMW 320d M Sport cat n",
+                sold_price_pence=420000,
                 year=year,
                 make=make,
                 model=model,
             ),
             SoldListing(
-                title=f"{make} {model} {year} - Full Service History",
-                sold_price_pence=690000,
+                title="BMW 320d ES spares",
+                sold_price_pence=380000,
                 year=year,
                 make=make,
                 model=model,
             ),
             SoldListing(
-                title=f"{make} {model} {year} - 1 Owner",
-                sold_price_pence=780000,
+                title="BMW 320d 2010 repair",
+                sold_price_pence=395000,
                 year=year,
                 make=make,
                 model=model,
             ),
             SoldListing(
-                title=f"{make} {model} {year} - Recently Serviced",
-                sold_price_pence=710000,
+                title="BMW 320d non runner sold",
+                sold_price_pence=310000,
                 year=year,
                 make=make,
                 model=model,

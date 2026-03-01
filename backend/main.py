@@ -40,6 +40,9 @@ async def startup():
     register_detection_worker(bus)
     logger.info("Detection worker registered")
 
+    from app.workers.valuation_worker import register_valuation_worker
+    register_valuation_worker(bus)
+    logger.info("Valuation worker registered")
     from app.workers.estimation_worker import register_estimation_worker
     register_estimation_worker(bus)
     logger.info("Estimation worker registered")

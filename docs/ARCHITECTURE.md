@@ -448,4 +448,4 @@ ALERT_DISTANCE_MILES=50
 
 ---
 
-*Last updated: Milestone 4 — Repair estimation service with live parts pricing complete*
+*Last updated: Milestone 5 — Market value service (eBay sold + LinkUp fallback) complete*
