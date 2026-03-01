@@ -1,0 +1,9 @@
+/** Axios HTTP client configured to talk to the Flipper backend API. */
+import axios from 'axios'
+import { API_BASE_URL } from '../constants/config'
+
+export const api = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 10000,
+  headers: { 'Content-Type': 'application/json' },
+})
