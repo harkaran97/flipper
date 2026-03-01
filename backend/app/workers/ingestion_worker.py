@@ -116,6 +116,19 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
     return stats
 
 
+async def run_once(bus: EventBus) -> dict:
+    """
+    Run a single poll cycle outside the scheduled loop.
+    Called by the /refresh endpoint for manual ingestion.
+    Returns: dict with listings_found count.
+    """
+    adapter = get_listings_adapter()
+    async with AsyncSessionLocal() as session:
+        stats = await run_poll_cycle(session, adapter, bus)
+    logger.info("Manual refresh cycle complete: %s", stats)
+    return {"listings_found": stats.get("stored", 0)}
+
+
 async def start_ingestion_worker(bus: EventBus) -> None:
     """
     Runs indefinitely. Polls every settings.poll_interval_seconds.
