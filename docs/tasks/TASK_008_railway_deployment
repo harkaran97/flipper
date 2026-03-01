@@ -1,0 +1,366 @@
+# TASK 008 — Railway Deployment
+
+**Reference:** `docs/ARCHITECTURE.md`, `docs/GLOBAL_INSTRUCTIONS.md`
+**Milestone:** 8 of 10
+**Depends on:** TASK_001 through TASK_007 — all merged to master
+**Engineer:** Claude Code
+
+---
+
+## Before you start
+
+Before writing any code, review this spec against `docs/ARCHITECTURE.md`
+and all existing files. Flag any of the following:
+
+- Missing files that would block deployment
+- Any config that references hardcoded values that should be env vars
+- Any ambiguity in the deployment setup
+
+State concerns explicitly. Propose an alternative if you have one.
+Wait for confirmation before proceeding.
+
+If everything looks good, say "Spec reviewed — no issues found" and proceed.
+
+---
+
+## Context to load
+
+- `docs/GLOBAL_INSTRUCTIONS.md`
+- `docs/ARCHITECTURE.md`
+- `backend/config.py`
+- `backend/main.py`
+- `backend/requirements.txt`
+- `backend/app/core/database.py`
+
+---
+
+## Objective
+
+Make the Flipper backend deployable to Railway with a single click.
+
+Railway needs:
+1. A `Dockerfile` to build and run the backend
+2. A `railway.toml` to configure the deployment
+3. All environment variables documented clearly
+4. Health endpoint verified to respond correctly
+
+No new features. No schema changes. Pure deployment plumbing.
+
+---
+
+## What to Build
+
+### 1. `backend/Dockerfile`
+
+```dockerfile
+FROM python:3.12-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Expose port
+EXPOSE 8000
+
+# Run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+### 2. `railway.toml` (in repo root, not backend/)
+
+```toml
+[build]
+builder = "dockerfile"
+dockerfilePath = "backend/Dockerfile"
+dockerContextDir = "backend"
+
+[deploy]
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+```
+
+### 3. `backend/.env.example`
+
+Document every required environment variable. This file is
+committed to the repo. The actual `.env` is never committed.
+
+```bash
+# ============================================================
+# Flipper Backend — Environment Variables
+# Copy this file to .env for local development
+# Set these in Railway dashboard for production
+# ============================================================
+
+# Database (Railway provides this automatically as DATABASE_URL)
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/flipper
+
+# Anthropic (required for AI fault detection)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# eBay Browse API (required for listing ingestion)
+EBAY_APP_ID=your-ebay-app-id
+EBAY_CERT_ID=your-ebay-cert-id
+
+# LinkUp (required for web search enrichment)
+LINKUP_API_KEY=your-linkup-api-key
+
+# Stub modes (set to true for development, false for production)
+EBAY_STUB=true
+LINKUP_STUB=true
+
+# Polling interval in seconds (default 180 = 3 minutes)
+POLL_INTERVAL_SECONDS=180
+
+# Opportunity alert threshold (default 0.6)
+ALERT_SCORE_THRESHOLD=0.6
+```
+
+### 4. Update `backend/config.py`
+
+Ensure all settings have sensible defaults and read cleanly
+from environment variables. Verify these fields exist:
+
+```python
+class Settings(BaseSettings):
+    database_url: str
+    anthropic_api_key: str = ""
+    ebay_app_id: str = ""
+    ebay_cert_id: str = ""
+    linkup_api_key: str = ""
+    ebay_stub: bool = True
+    linkup_stub: bool = True
+    poll_interval_seconds: int = 180
+    alert_score_threshold: float = 0.6
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+```
+
+If any of these are missing from the current `config.py`, add them.
+Do NOT remove any existing settings.
+
+### 5. Update `backend/app/core/database.py`
+
+Ensure the database URL handles both `postgresql://` and
+`postgresql+asyncpg://` prefixes, since Railway provides the
+former but asyncpg requires the latter:
+
+```python
+def _fix_database_url(url: str) -> str:
+    """Railway provides postgresql:// but asyncpg needs postgresql+asyncpg://"""
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+asyncpg://", 1)
+    return url
+```
+
+Apply this fix when creating the engine:
+```python
+database_url = _fix_database_url(settings.database_url)
+engine = create_async_engine(database_url, echo=False)
+```
+
+### 6. `docs/DEPLOYMENT.md`
+
+Create a clear deployment guide for Railway:
+
+```markdown
+# Flipper — Railway Deployment Guide
+
+## Prerequisites
+- Railway account (railway.app)
+- GitHub repo connected to Railway
+
+## Steps
+
+### 1. Create Railway project
+1. Go to railway.app → New Project
+2. Select "Deploy from GitHub repo"
+3. Select the flipper repository
+
+### 2. Add PostgreSQL
+1. In your Railway project → Add Service → Database → PostgreSQL
+2. Railway automatically sets DATABASE_URL in your environment
+
+### 3. Set environment variables
+In Railway dashboard → your service → Variables, add:
+
+| Variable | Value |
+|---|---|
+| `ANTHROPIC_API_KEY` | Your Anthropic API key |
+| `EBAY_APP_ID` | Your eBay app ID |
+| `EBAY_CERT_ID` | Your eBay cert ID |
+| `LINKUP_API_KEY` | Your LinkUp API key |
+| `EBAY_STUB` | `false` (for production) |
+| `LINKUP_STUB` | `false` (for production) |
+| `POLL_INTERVAL_SECONDS` | `180` |
+
+Note: Do NOT set DATABASE_URL manually — Railway sets this automatically
+from the PostgreSQL service.
+
+### 4. Deploy
+Railway deploys automatically on every push to main/master.
+First deploy takes 3-5 minutes (Docker build).
+
+### 5. Verify
+Once deployed, visit:
+`https://your-app.railway.app/health`
+
+Expected response:
+```json
+{
+  "status": "ok",
+  "pipeline": {
+    "ingestion": "running",
+    "detection": "running",
+    "estimation": "running",
+    "valuation": "running",
+    "scoring": "running"
+  }
+}
+```
+
+## Environment variable reference
+See `backend/.env.example` for full list with descriptions.
+```
+
+---
+
+## What NOT to Build
+
+- No CI/CD pipeline (Railway handles this)
+- No staging environment (single environment for personal use)
+- No Alembic migrations (create_all on startup is sufficient for MVP)
+- No SSL config (Railway handles this automatically)
+- No Redis (in-memory job store is sufficient for personal use)
+
+---
+
+## Acceptance Criteria
+
+### 1. Dockerfile builds without error
+```bash
+cd backend
+docker build -t flipper-test . 2>&1 | tail -5
+# Should end with: Successfully built ... or similar
+# (Only run this if Docker is available — skip if not)
+echo "Dockerfile: present and syntactically valid"
+```
+
+### 2. railway.toml is valid
+```bash
+# Check file exists and has required sections
+python -c "
+import tomllib
+with open('railway.toml', 'rb') as f:
+    config = tomllib.load(f)
+assert 'build' in config
+assert 'deploy' in config
+assert config['deploy']['healthcheckPath'] == '/health'
+print('railway.toml: OK')
+" 2>/dev/null || python -c "
+# Python < 3.11 fallback
+import re
+content = open('railway.toml').read()
+assert '[build]' in content
+assert '[deploy]' in content
+assert 'healthcheckPath' in content
+print('railway.toml: OK')
+"
+```
+
+### 3. Config reads environment variables correctly
+```bash
+cd backend
+DATABASE_URL=postgresql+asyncpg://test:test@localhost/test \
+ANTHROPIC_API_KEY=test \
+python -c "
+from config import settings
+assert settings.database_url == 'postgresql+asyncpg://test:test@localhost/test'
+assert settings.ebay_stub == True  # default
+assert settings.linkup_stub == True  # default
+print('Config: OK')
+"
+```
+
+### 4. Database URL fix works correctly
+```bash
+cd backend
+python -c "
+from app.core.database import _fix_database_url
+assert _fix_database_url('postgresql://u:p@h/db') == 'postgresql+asyncpg://u:p@h/db'
+assert _fix_database_url('postgres://u:p@h/db') == 'postgresql+asyncpg://u:p@h/db'
+assert _fix_database_url('postgresql+asyncpg://u:p@h/db') == 'postgresql+asyncpg://u:p@h/db'
+print('Database URL fix: OK')
+"
+```
+
+### 5. Health endpoint importable
+```bash
+cd backend
+python -c "
+from main import app
+routes = [r.path for r in app.routes]
+assert '/health' in routes
+print(f'Health endpoint: OK — routes include /health')
+"
+```
+
+### 6. .env.example exists and documents all keys
+```bash
+python -c "
+content = open('backend/.env.example').read()
+required_keys = ['DATABASE_URL', 'ANTHROPIC_API_KEY', 'EBAY_APP_ID',
+                 'LINKUP_API_KEY', 'EBAY_STUB', 'LINKUP_STUB']
+for key in required_keys:
+    assert key in content, f'Missing: {key}'
+print('env.example: OK')
+"
+```
+
+---
+
+## After Completion
+
+- Update `ARCHITECTURE.md` Milestone 8 → ✅
+- Commit: `feat: TASK_008 — Railway deployment configuration`
+- Report must include:
+  - All 6 smoke test results
+  - Confirmation that `railway.toml` is in repo root (not backend/)
+  - Confirmation that `Dockerfile` is in `backend/`
+  - Any deviations with justification
+
+---
+
+## After merging — human steps required
+
+These steps cannot be done by Claude Code and must be done manually:
+
+1. Go to railway.app → sign up / log in
+2. New Project → Deploy from GitHub → select flipper repo
+3. Add PostgreSQL service
+4. Add environment variables from `.env.example`
+5. Set `EBAY_STUB=false` and `LINKUP_STUB=false` when ready for live data
+6. Visit `https://your-app.railway.app/health` to confirm deployment
+7. Copy the Railway URL — needed for the Rork iOS app prompt
+
+---
+
+*Task authored by: Flipper CTO/CPO*
+*Depends on: TASK_001 through TASK_007*
+*Next task: TASK_009 — iOS App (Rork prompt)*
