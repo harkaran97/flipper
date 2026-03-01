@@ -43,6 +43,9 @@ async def startup():
     from app.workers.valuation_worker import register_valuation_worker
     register_valuation_worker(bus)
     logger.info("Valuation worker registered")
+    from app.workers.estimation_worker import register_estimation_worker
+    register_estimation_worker(bus)
+    logger.info("Estimation worker registered")
 
     from app.workers.ingestion_worker import start_ingestion_worker
     asyncio.create_task(start_ingestion_worker(bus))

@@ -27,6 +27,9 @@ async def init_db() -> None:
     import app.models.car  # noqa: F401
     import app.models.cars_common_problems  # noqa: F401
     import app.models.exterior_condition  # noqa: F401
+    import app.models.fault_part  # noqa: F401
+    import app.models.parts_search_result  # noqa: F401
+    import app.models.user_settings  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
