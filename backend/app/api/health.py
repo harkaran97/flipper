@@ -25,4 +25,7 @@ async def health_check():
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=503, content=health)
 
+    from app.workers.ingestion_worker import last_poll_time
+    health["last_poll"] = last_poll_time.isoformat() if last_poll_time else None
+
     return health
