@@ -403,7 +403,7 @@ Take: median of bottom 5 results
 | 6 | Opportunity scoring engine | ✅ |
 | 7 | REST API endpoints | ✅ |
 | 8 | Railway deployment configuration | ✅ |
-| 9 | iOS SwiftUI client | 🔲 |
+| 9 | React Native iOS app (Expo) | ✅ |
 | 10 | Push notifications | 🔲 |
 
 ---
@@ -448,4 +448,4 @@ ALERT_DISTANCE_MILES=50
 
 ---
 
-*Last updated: Milestone 8 — Railway deployment configuration complete*
+*Last updated: Milestone 9 — React Native iOS app with Expo complete*
