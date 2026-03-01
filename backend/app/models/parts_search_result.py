@@ -28,7 +28,7 @@ class PartsSearchResult(Base):
 
     @property
     def is_fresh(self) -> bool:
-        return (datetime.utcnow() - self.searched_at).seconds < 86400  # 24h
+        return (datetime.utcnow() - self.searched_at).total_seconds < 86400  # 24h
 
     def __repr__(self) -> str:
         return f"<PartsSearchResult(listing_id={self.listing_id}, part={self.part_name}, supplier={self.supplier})>"
