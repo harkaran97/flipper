@@ -23,12 +23,11 @@ bus = EventBus()
 @app.on_event("startup")
 async def startup():
     setup_logging()
-    if settings.environment == "development":
-        try:
-            from app.core.database import init_db
-            await init_db()
-        except Exception as e:
-            logger.warning("Could not initialise database tables: %s", e)
+    try:
+        from app.core.database import init_db
+        await init_db()
+    except Exception as e:
+        logger.warning("Could not initialise database tables: %s", e)
 
     if settings.environment == "development" or settings.seed_data:
         try:

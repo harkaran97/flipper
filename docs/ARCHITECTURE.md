@@ -402,7 +402,7 @@ Take: median of bottom 5 results
 | 5 | Market value service (eBay sold + LinkUp fallback) | ✅ |
 | 6 | Opportunity scoring engine | ✅ |
 | 7 | REST API endpoints | ✅ |
-| 8 | eBay adapter (live) — post API approval | 🔲 |
+| 8 | Railway deployment configuration | ✅ |
 | 9 | iOS SwiftUI client | 🔲 |
 | 10 | Push notifications | 🔲 |
 
@@ -448,4 +448,4 @@ ALERT_DISTANCE_MILES=50
 
 ---
 
-*Last updated: Milestone 7 — REST API endpoints complete*
+*Last updated: Milestone 8 — Railway deployment configuration complete*
