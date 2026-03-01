@@ -9,7 +9,16 @@ from app.adapters.base import (
 
 
 class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
+    def __init__(self) -> None:
+        self._call_count = 0
+
+    @property
+    def call_count(self) -> int:
+        """Number of times search_listings has been called. Used in smoke tests."""
+        return self._call_count
+
     async def search_listings(self, query: str, filters: dict) -> list[RawListing]:
+        self._call_count += 1
         return [
             RawListing(
                 external_id="ebay_stub_001",
