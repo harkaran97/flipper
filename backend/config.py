@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     poll_interval_seconds: int = 180
     opportunity_score_threshold: float = 0.6
     alert_distance_miles: int = 50
+    seed_data: bool = False
 
     class Config:
         env_file = ".env"

@@ -5,6 +5,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
+from app.models.enums import MarketValueConfidence, MarketValueSource  # noqa: F401
 
 
 class MarketValue(Base):
