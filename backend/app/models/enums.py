@@ -64,3 +64,10 @@ class CommonProblemSource(str, Enum):
     PRE_SEEDED = "pre_seeded"
     SYSTEM_OBSERVED = "system_observed"
     LINKUP_CONFIRMED = "linkup_confirmed"
+
+
+class OpportunityClass(str, Enum):
+    STRONG = "strong"
+    SPECULATIVE = "speculative"
+    WORTH_A_LOOK = "worth_a_look"
+    EXCLUDE = "exclude"
