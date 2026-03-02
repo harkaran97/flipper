@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 10.0.0"
+    "version": ">= 10.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -10,7 +11,8 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://flipper-production-dca0.up.railway.app/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://flipper-production-dca0.up.railway.app/api/v1",
+        "EAS_BUILD_NO_EXPO_GO_WARNING": "true"
       }
     },
     "preview": {
@@ -20,7 +22,8 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://flipper-production-dca0.up.railway.app/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://flipper-production-dca0.up.railway.app/api/v1",
+        "EAS_BUILD_NO_EXPO_GO_WARNING": "true"
       }
     },
     "production": {
