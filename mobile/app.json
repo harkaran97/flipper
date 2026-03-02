@@ -2,7 +2,7 @@
   "expo": {
     "name": "Flipper",
     "slug": "flipper",
-    "owner": "flipper-app",
+    "owner": "harkarankava",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -29,7 +29,7 @@
     "scheme": "flipper",
     "extra": {
       "eas": {
-        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+        "projectId": "8615c55d-2311-41b9-a5c6-c1e5c7b0c444"
       }
     }
   }
