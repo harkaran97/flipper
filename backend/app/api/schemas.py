@@ -11,9 +11,14 @@ from pydantic import BaseModel
 
 class SupplierPrice(BaseModel):
     supplier: str
+    supplier_logo_key: str = ""
     price_pence: int
+    delivery_pence: int = 0
+    total_cost_pence: int = 0
+    condition: str = "new"
     url: str
     in_stock: bool
+    price_confidence: str = "live"
 
 
 class PartResult(BaseModel):
@@ -22,6 +27,7 @@ class PartResult(BaseModel):
     quantity: str
     is_consumable: bool
     suppliers: list[SupplierPrice]
+    cheapest_pence: int | None = None
 
 
 class FaultDetail(BaseModel):
