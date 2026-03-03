@@ -2,6 +2,7 @@
  * Root layout: sets up React Query provider, requests push notification
  * permissions on first launch, and registers the device token with the backend.
  */
+import '../global.css'
 import React, { useEffect } from 'react'
 import { Stack } from 'expo-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
