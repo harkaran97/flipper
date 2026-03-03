@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     alert_distance_miles: int = 50
     seed_data: bool = False
 
+    # Parts pricing service
+    parts_stub: bool = True          # Set false when scrapers are verified in production
+    user_postcode: str = "LE4 8JF"  # Default postcode for delivery calculation
+    parts_cache_ttl_hours: int = 24  # How long to cache parts pricing results
+    scraper_timeout_seconds: int = 5  # Per-adapter HTTP timeout
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

@@ -27,8 +27,9 @@ from app.models.fault_part import FaultPart
 from app.models.listing import Listing
 from app.models.market_value import MarketValue
 from app.models.opportunity import Opportunity
-from app.models.parts_search_result import PartsSearchResult
+from app.models.parts_price_cache import PartsPriceCache
 from app.models.vehicle import Vehicle
+from app.services.parts_pricing import PartsPricingService
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,8 @@ OPPORTUNITY_CLASS_ORDER = {
     "speculative": 1,
     "worth_a_look": 2,
 }
+
+_parts_pricing_svc = PartsPricingService()
 
 
 def _format_card(opp: Opportunity, listing: Listing, vehicle: Vehicle | None) -> OpportunityCard:
@@ -96,8 +99,6 @@ async def get_opportunities(
     total = count_result.scalar_one()
 
     # Fetch opportunities — join Listing for title/url, ordering applied in Python
-    # (SQLAlchemy case() for custom order would add complexity; sort in Python is fine
-    # for personal-use scale)
     opp_result = await session.execute(
         select(Opportunity).where(*filters)
     )
@@ -212,16 +213,6 @@ async def get_opportunity_detail(
             labour_days=cp.labour_days_default if cp else 1.0,
         ))
 
-    # Load PartsSearchResult rows for this listing
-    psr_result = await session.execute(
-        select(PartsSearchResult).where(PartsSearchResult.listing_id == opp.listing_id)
-    )
-    all_psr = psr_result.scalars().all()
-    # Group by fault_type → part_name → list of results
-    psr_by_fault: dict[str, dict[str, list[PartsSearchResult]]] = {}
-    for psr in all_psr:
-        psr_by_fault.setdefault(psr.fault_type, {}).setdefault(psr.part_name, []).append(psr)
-
     # Load FaultPart rows for all fault types
     if fault_types:
         fp_result = await session.execute(
@@ -233,29 +224,26 @@ async def get_opportunity_detail(
     else:
         fault_parts_by_type = {}
 
-    # Assemble parts breakdown per fault
+    # Build parts breakdown — pull from parts_price_cache for richer supplier data
     parts_breakdown: list[FaultPartsBreakdown] = []
+
     for fault in detected_faults:
         fault_type = fault.issue
         fault_parts = fault_parts_by_type.get(fault_type, [])
-        psr_for_fault = psr_by_fault.get(fault_type, {})
 
         part_results: list[PartResult] = []
         all_prices: list[int] = []
 
         for fp in fault_parts:
-            psr_for_part = psr_for_fault.get(fp.part_name, [])
-            suppliers = [
-                SupplierPrice(
-                    supplier=psr.supplier,
-                    price_pence=psr.price_pence,
-                    url=psr.url,
-                    in_stock=psr.in_stock,
-                )
-                for psr in psr_for_part
-            ]
-            if psr_for_part:
-                all_prices.extend(psr.price_pence for psr in psr_for_part if psr.in_stock)
+            # Attempt to load from parts_price_cache (keyed by part+vehicle)
+            suppliers = await _load_suppliers_from_cache(
+                session=session,
+                part_name=fp.part_name,
+                vehicle=vehicle,
+            )
+            cheapest = min((s.total_cost_pence for s in suppliers), default=None)
+            if cheapest is not None:
+                all_prices.append(cheapest)
 
             part_results.append(PartResult(
                 part_name=fp.part_name,
@@ -263,6 +251,7 @@ async def get_opportunity_detail(
                 quantity=fp.quantity,
                 is_consumable=fp.is_consumable,
                 suppliers=suppliers,
+                cheapest_pence=cheapest,
             ))
 
         fault_parts_total_min = min(all_prices) if all_prices else 0
@@ -312,3 +301,53 @@ async def get_opportunity_detail(
         day_rate_pence=opp.day_rate_pence,
         linkup_fallback_used=linkup_fallback_used,
     )
+
+
+async def _load_suppliers_from_cache(
+    session: AsyncSession,
+    part_name: str,
+    vehicle: Vehicle | None,
+) -> list[SupplierPrice]:
+    """
+    Looks up parts_price_cache for this part+vehicle combination.
+    Returns list of SupplierPrice from cached PartResult objects.
+    Returns empty list if no cache entry found or entry expired.
+    """
+    if vehicle is None:
+        return []
+
+    cache_key = _parts_pricing_svc._build_cache_key(
+        part_name=part_name,
+        make=vehicle.make,
+        model=vehicle.model,
+        year=vehicle.year,
+    )
+
+    result = await session.execute(
+        select(PartsPriceCache).where(PartsPriceCache.cache_key == cache_key)
+    )
+    row = result.scalar_one_or_none()
+    if row is None or not row.is_valid:
+        return []
+
+    try:
+        suppliers = []
+        for item in row.results_json.get("results", []):
+            base = item.get("base_price_pence", 0)
+            delivery = item.get("delivery_pence", 0)
+            total = item.get("total_cost_pence", base + delivery)
+            suppliers.append(SupplierPrice(
+                supplier=item.get("supplier", ""),
+                supplier_logo_key=item.get("supplier_logo_key", ""),
+                price_pence=base,
+                delivery_pence=delivery,
+                total_cost_pence=total,
+                condition=item.get("condition", "new"),
+                url=item.get("url", ""),
+                in_stock=item.get("availability", "in_stock") == "in_stock",
+                price_confidence=item.get("price_confidence", "live"),
+            ))
+        return suppliers
+    except Exception as exc:
+        logger.warning("Failed to deserialise parts cache for %s: %s", cache_key, exc)
+        return []

@@ -405,6 +405,7 @@ Take: median of bottom 5 results
 | 8 | Railway deployment configuration | ✅ |
 | 9 | React Native iOS app (Expo) | ✅ |
 | 10 | Push notifications | 🔲 |
+| 11 | Multi-source parts pricing service (eBay + 4 scrapers, cache, adapter pattern) | ✅ |
 
 ---
 
@@ -448,4 +449,4 @@ ALERT_DISTANCE_MILES=50
 
 ---
 
-*Last updated: Milestone 9 — React Native iOS app with Expo complete*
+*Last updated: Milestone 11 — Multi-source parts pricing service complete*

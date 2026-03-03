@@ -7,25 +7,13 @@ Logic:
 1. Load detected faults for this listing
 2. For each fault:
    a. Look up fault_parts — get parts list
-   b. For each part: search LinkUp for live price
-      (check parts_search_results cache first — TTL 24h)
-   c. Sum parts cost across all faults
+   b. For each part: call PartsPricingService (cache-first, multi-source, TTL 24h)
+   c. Use cheapest_pence for repair_cost_min, median for repair_cost_max
 3. Look up labour_days from cars_common_problems (override)
    or common_problems (default)
 4. Sum total man days
 5. Store RepairEstimate
-6. Store PartsSearchResult rows
-
-Parts search query format:
-"{make} {model} {year} {part_name} buy UK"
-
-Suppliers to search (in priority order):
-1. GSF Car Parts (gsf.co.uk)
-2. Euro Car Parts (eurocarparts.com)
-3. The Parts People (thepartspeople.co.uk)
-4. Autodoc (autodoc.co.uk)
-5. eBay Motors Parts
-6. Andrew Page (andrewpage.co.uk)
+6. Emit REPAIR_ESTIMATED
 """
 import logging
 import uuid
@@ -41,15 +29,17 @@ from app.models.common_problem import CommonProblem
 from app.models.fault import DetectedFault
 from app.models.fault_part import FaultPart
 from app.models.listing import Listing
-from app.models.parts_search_result import PartsSearchResult
 from app.models.repair_estimate import RepairEstimate
 from app.models.vehicle import Vehicle
-from app.services.search_service import search_parts_price as _search_parts_price
+from app.services.parts_pricing import PartsPricingService
+from config import settings
 
 logger = logging.getLogger(__name__)
 
 # Cost ceiling: only search parts prices if listing is below £10,000
 _PRICE_CEILING_PENCE = 1_000_000
+
+_parts_pricing_service = PartsPricingService()
 
 
 async def estimate_repairs(
@@ -61,9 +51,9 @@ async def estimate_repairs(
     Full repair estimation pipeline for one listing.
     1. Load listing + vehicle + detected faults
     2. For each fault → get parts list from fault_parts
-    3. For each part → search LinkUp (cache-first, TTL 24h)
-    4. Sum parts cost + man days
-    5. Store RepairEstimate + PartsSearchResult rows
+    3. For each part → call PartsPricingService (multi-source, cache-first)
+    4. Sum parts cost (cheapest for min, median for max) + man days
+    5. Store RepairEstimate
     6. Emit REPAIR_ESTIMATED
     """
     # Load listing
@@ -111,39 +101,37 @@ async def estimate_repairs(
         if not parts:
             logger.info("No parts defined for fault '%s' — marking as unpriced", fault_type)
             unpriced_fault_types.append(fault_type)
-        else:
-            # Only search parts prices if listing is below plausibility ceiling
-            if listing.price_pence <= _PRICE_CEILING_PENCE:
-                cached = await get_cached_parts_results(session, listing_id, fault_type)
-                cached_names = {r.part_name for r in cached}
+        elif listing.price_pence <= _PRICE_CEILING_PENCE:
+            # Search prices for each part via the multi-source service
+            fault_cheapest_sum = 0
+            fault_median_sum = 0
 
-                for part in parts:
-                    if part.part_name not in cached_names:
-                        raw_results = await search_part_price(
-                            make=vehicle.make,
-                            model=vehicle.model,
-                            year=vehicle.year,
-                            part_name=part.part_name,
+            for part in parts:
+                try:
+                    pricing = await _parts_pricing_service.get_prices(
+                        part_name=part.part_name,
+                        make=vehicle.make,
+                        model=vehicle.model,
+                        year=vehicle.year,
+                        postcode=settings.user_postcode,
+                        session=session,
+                    )
+                    if pricing.results:
+                        cheapest = pricing.cheapest_pence or 0
+                        median = _parts_pricing_service.compute_median_total_pence(pricing) or cheapest
+                        fault_cheapest_sum += cheapest
+                        fault_median_sum += median
+                        logger.debug(
+                            "Part '%s': cheapest=%dp, median=%dp",
+                            part.part_name, cheapest, median,
                         )
-                        for r in raw_results:
-                            session.add(PartsSearchResult(
-                                listing_id=listing_id,
-                                fault_type=fault_type,
-                                part_name=part.part_name,
-                                supplier=r["supplier"],
-                                price_pence=r["price_pence"],
-                                url=r["url"],
-                                in_stock=r.get("in_stock", True),
-                            ))
+                except Exception:
+                    logger.warning(
+                        "Parts pricing failed for '%s' — skipping", part.part_name, exc_info=True
+                    )
 
-        # Sum parts costs from cached (or freshly stored) results
-        await session.flush()
-        fresh_results = await get_cached_parts_results(session, listing_id, fault_type)
-        if fresh_results:
-            prices = [r.price_pence for r in fresh_results if r.in_stock]
-            if prices:
-                total_parts_min += min(prices)
-                total_parts_max += max(prices)
+            total_parts_min += fault_cheapest_sum
+            total_parts_max += fault_median_sum
 
         # Add labour days
         labour = await get_labour_days(session, fault_type, car_id)
@@ -195,26 +183,6 @@ async def estimate_repairs(
     ))
 
 
-async def get_cached_parts_results(
-    session: AsyncSession,
-    listing_id: uuid.UUID,
-    fault_type: str,
-) -> list[PartsSearchResult]:
-    """
-    Returns fresh parts search results for this listing+fault
-    if they exist and are < 24 hours old.
-    Returns empty list if cache miss or stale.
-    """
-    result = await session.execute(
-        select(PartsSearchResult).where(
-            PartsSearchResult.listing_id == listing_id,
-            PartsSearchResult.fault_type == fault_type,
-        )
-    )
-    rows = result.scalars().all()
-    return [r for r in rows if r.is_fresh]
-
-
 async def get_labour_days(
     session: AsyncSession,
     fault_type: str,
@@ -249,29 +217,6 @@ async def get_labour_days(
         return problem.labour_days_default
 
     return 1.0
-
-
-async def search_part_price(
-    make: str,
-    model: str,
-    year: int,
-    part_name: str,
-) -> list[dict]:
-    """
-    Searches LinkUp for current UK parts prices.
-    Query: "{make} {model} {year} {part_name} buy UK"
-    Returns list of {supplier, price_pence, url, in_stock}
-    Returns empty list on failure — never crashes estimation.
-
-    Cost control: Only fires for listings where listing_price_pence
-    is below a plausibility threshold (market value not yet known,
-    so use a generous ceiling of £10,000 / 1,000,000 pence).
-    """
-    try:
-        return await _search_parts_price(make=make, model=model, year=year, part_name=part_name)
-    except Exception:
-        logger.error("Parts price search failed for '%s' — returning empty", part_name, exc_info=True)
-        return []
 
 
 async def _resolve_car_id(
