@@ -11,10 +11,10 @@ import { colours } from '../constants/colours'
 export type FilterValue = 'all' | OpportunityClass
 
 const FILTERS: { label: string; value: FilterValue }[] = [
-  { label: 'All', value: 'all' },
-  { label: 'Strong', value: 'strong' },
-  { label: 'Speculative', value: 'speculative' },
-  { label: 'Worth a Look', value: 'worth_a_look' },
+  { label: 'ALL', value: 'all' },
+  { label: 'STRONG', value: 'strong' },
+  { label: 'SPECULATIVE', value: 'speculative' },
+  { label: 'WORTH A LOOK', value: 'worth_a_look' },
 ]
 
 interface Props {
@@ -39,7 +39,7 @@ export const FilterBar: React.FC<Props> = ({ selected, onSelect }) => (
         >
           <Text
             style={[styles.label, active && styles.labelActive]}
-            allowFontScaling={true}
+            allowFontScaling={false}
           >
             {f.label}
           </Text>
@@ -53,30 +53,32 @@ export const FilterBar: React.FC<Props> = ({ selected, onSelect }) => (
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
     gap: 8,
     flexDirection: 'row',
   },
   pill: {
-    borderRadius: 20,
+    height: 28,
+    borderRadius: 4,
     borderWidth: 1,
     borderColor: colours.border,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
     backgroundColor: colours.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pillActive: {
     backgroundColor: colours.black,
     borderColor: colours.black,
   },
   label: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colours.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    color: colours.textMuted,
   },
   labelActive: {
     color: colours.white,
-    fontWeight: '600',
   },
   trailing: { width: 8 },
 })

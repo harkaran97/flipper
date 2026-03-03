@@ -174,20 +174,22 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   sectionLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colours.textSecondary,
+    fontSize: 10,
+    fontWeight: '600',
+    color: colours.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     marginBottom: 8,
   },
   marketValue: {
     fontSize: 15,
     color: colours.textPrimary,
+    fontVariant: ['tabular-nums'],
   },
   effortText: {
     fontSize: 15,
     color: colours.textSecondary,
+    fontVariant: ['tabular-nums'],
   },
   unpricedLabel: {
     fontSize: 13,
@@ -212,7 +214,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     flex: 1,
     backgroundColor: colours.green,
-    borderRadius: 10,
+    borderRadius: 8,
     paddingVertical: 14,
     alignItems: 'center',
   },
@@ -223,9 +225,9 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     flex: 1,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: colours.black,
-    borderRadius: 10,
+    borderRadius: 8,
     paddingVertical: 14,
     alignItems: 'center',
   },

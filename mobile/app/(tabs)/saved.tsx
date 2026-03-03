@@ -3,7 +3,7 @@
  * Swipe left to remove from saved.
  */
 import React from 'react'
-import { View, FlatList, StyleSheet, SafeAreaView } from 'react-native'
+import { FlatList, StyleSheet, SafeAreaView } from 'react-native'
 import { useSavedOpportunities } from '../../hooks/useSavedOpportunities'
 import { OpportunityCard } from '../../components/OpportunityCard'
 import { EmptyState } from '../../components/EmptyState'
@@ -22,8 +22,7 @@ export default function SavedScreen() {
         ListEmptyComponent={
           !isLoading ? (
             <EmptyState
-              emoji="🔖"
-              title="Nothing saved yet."
+              title="Nothing saved."
               subtitle="Swipe left on any opportunity to save it."
             />
           ) : null
@@ -36,11 +35,11 @@ export default function SavedScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colours.bgSecondary,
+    backgroundColor: colours.bg,
   },
   list: {
-    paddingTop: 10,
-    paddingBottom: 20,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
   emptyContainer: {
     flexGrow: 1,

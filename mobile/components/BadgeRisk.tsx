@@ -7,10 +7,10 @@ import { View, Text, StyleSheet } from 'react-native'
 import { RiskLevel } from '../lib/types'
 import { colours } from '../constants/colours'
 
-const CONFIG: Record<RiskLevel, { icon: string; colour: string } | null> = {
+const CONFIG: Record<RiskLevel, { label: string; colour: string } | null> = {
   low: null,
-  medium: { icon: '⚠', colour: colours.riskMedium },
-  high: { icon: '🔴', colour: colours.riskHigh },
+  medium: { label: 'MED RISK', colour: colours.riskMedium },
+  high: { label: 'HIGH RISK', colour: colours.danger },
 }
 
 interface Props {
@@ -22,8 +22,8 @@ export const BadgeRisk: React.FC<Props> = ({ risk }) => {
   if (!config) return null
   return (
     <View style={[styles.pill, { borderColor: config.colour }]}>
-      <Text style={[styles.label, { color: config.colour }]} allowFontScaling={true}>
-        {config.icon} {risk.charAt(0).toUpperCase() + risk.slice(1)}
+      <Text style={[styles.label, { color: config.colour }]} allowFontScaling={false}>
+        {config.label}
       </Text>
     </View>
   )
@@ -31,13 +31,14 @@ export const BadgeRisk: React.FC<Props> = ({ risk }) => {
 
 const styles = StyleSheet.create({
   pill: {
-    borderRadius: 6,
+    borderRadius: 4,
     borderWidth: 1,
     paddingHorizontal: 7,
     paddingVertical: 3,
   },
   label: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
+    letterSpacing: 0.3,
   },
 })

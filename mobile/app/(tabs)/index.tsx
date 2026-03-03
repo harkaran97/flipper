@@ -58,11 +58,7 @@ export default function OpportunitiesScreen() {
         }
         ListEmptyComponent={
           !isLoading ? (
-            <EmptyState
-              emoji="🔍"
-              title="No opportunities yet, Ketan."
-              subtitle="Flipper is scanning eBay for deals. Pull down to check again."
-            />
+            <EmptyState variant="feed" subtitle="Scanning eBay now." />
           ) : null
         }
       />
@@ -73,25 +69,26 @@ export default function OpportunitiesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colours.bgSecondary,
+    backgroundColor: colours.bg,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 4,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
     backgroundColor: colours.bg,
   },
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '700',
+    letterSpacing: -0.5,
     color: colours.black,
   },
   list: {
-    paddingTop: 10,
-    paddingBottom: 20,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
   emptyContainer: {
     flexGrow: 1,
