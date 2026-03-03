@@ -29,14 +29,14 @@ export const BadgeClass: React.FC<Props> = ({ opportunityClass }) => {
   if (opportunityClass === 'exclude') return null
   return (
     <View style={[styles.pill, { backgroundColor: BG[opportunityClass] }]}>
-      <Text style={styles.label} allowFontScaling={true}>{LABELS[opportunityClass]}</Text>
+      <Text style={styles.label} allowFontScaling={false}>{LABELS[opportunityClass]}</Text>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   pill: {
-    borderRadius: 6,
+    borderRadius: 4,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },

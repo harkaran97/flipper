@@ -39,6 +39,7 @@ export const DetailHeader: React.FC<Props> = ({ opportunity }) => {
       </View>
 
       <View style={styles.profitHero}>
+        <Text style={styles.profitLabel} allowFontScaling={false}>PROFIT</Text>
         <Text style={styles.profit} allowFontScaling={true}>{formatProfit(true_profit_pence)}</Text>
         <Text style={styles.profitSub} allowFontScaling={true}>
           {true_margin_pct.toFixed(0)}% margin · {formatDays(total_man_days)} work
@@ -51,7 +52,7 @@ export const DetailHeader: React.FC<Props> = ({ opportunity }) => {
           <View style={[styles.writeOffBadge, {
             backgroundColor: write_off_category === 'Cat S' ? colours.catS : colours.catN
           }]}>
-            <Text style={styles.writeOffText} allowFontScaling={true}>{write_off_category}</Text>
+            <Text style={styles.writeOffText} allowFontScaling={false}>{write_off_category}</Text>
           </View>
         )}
         <BadgeRisk risk={risk_level} />
@@ -60,7 +61,7 @@ export const DetailHeader: React.FC<Props> = ({ opportunity }) => {
       {has_unpriced_faults && (
         <View style={styles.warningBanner}>
           <Text style={styles.warningText} allowFontScaling={true}>
-            ⚠ Profit estimate is a floor figure — some faults could not be priced.
+            Profit estimate is a floor figure — some faults could not be priced.
           </Text>
         </View>
       )}
@@ -72,7 +73,7 @@ const styles = StyleSheet.create({
   logoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 16,
     marginBottom: 16,
   },
   titleBlock: { flex: 1 },
@@ -83,28 +84,40 @@ const styles = StyleSheet.create({
   },
   askingPrice: {
     fontSize: 14,
+    fontWeight: '500',
     color: colours.textSecondary,
+    fontVariant: ['tabular-nums'],
     marginTop: 2,
   },
-  profitHero: { marginBottom: 14 },
+  profitHero: { marginBottom: 16 },
+  profitLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    color: colours.textMuted,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
   profit: {
     fontSize: 32,
     fontWeight: '700',
     color: colours.green,
+    fontVariant: ['tabular-nums'],
   },
   profitSub: {
     fontSize: 15,
     color: colours.textMuted,
+    fontVariant: ['tabular-nums'],
     marginTop: 2,
   },
   badgeRow: {
     flexDirection: 'row',
     gap: 8,
     flexWrap: 'wrap',
-    marginBottom: 14,
+    marginBottom: 16,
   },
   writeOffBadge: {
-    borderRadius: 6,
+    borderRadius: 4,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
@@ -114,15 +127,17 @@ const styles = StyleSheet.create({
     color: colours.white,
   },
   warningBanner: {
-    backgroundColor: '#FFF8E1',
+    backgroundColor: colours.bg,
     borderRadius: 8,
-    padding: 10,
+    padding: 12,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colours.border,
     borderLeftWidth: 3,
-    borderLeftColor: colours.speculative,
+    borderLeftColor: colours.riskMedium,
   },
   warningText: {
     fontSize: 13,
-    color: '#795548',
+    color: colours.textSecondary,
   },
 })

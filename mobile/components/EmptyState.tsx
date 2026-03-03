@@ -1,24 +1,42 @@
 /**
  * Full-screen empty state shown when a list has no items.
- * Displays a large emoji, heading, and subtext.
+ * Feed variant: large "0" hero + OPPORTUNITIES label + subtitle.
+ * Default variant: title + subtitle, no emoji.
  */
 import React from 'react'
 import { View, Text, StyleSheet } from 'react-native'
 import { colours } from '../constants/colours'
 
 interface Props {
-  emoji: string
-  title: string
-  subtitle: string
+  variant?: 'feed' | 'default'
+  title?: string
+  subtitle?: string
 }
 
-export const EmptyState: React.FC<Props> = ({ emoji, title, subtitle }) => (
-  <View style={styles.container}>
-    <Text style={styles.emoji} allowFontScaling={false}>{emoji}</Text>
-    <Text style={styles.title} allowFontScaling={true}>{title}</Text>
-    <Text style={styles.subtitle} allowFontScaling={true}>{subtitle}</Text>
-  </View>
-)
+export const EmptyState: React.FC<Props> = ({ variant = 'default', title, subtitle }) => {
+  if (variant === 'feed') {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.bigNumber} allowFontScaling={false}>0</Text>
+        <Text style={styles.bigNumberLabel} allowFontScaling={false}>OPPORTUNITIES</Text>
+        {subtitle ? (
+          <Text style={styles.feedSubtitle} allowFontScaling={false}>{subtitle}</Text>
+        ) : null}
+      </View>
+    )
+  }
+
+  return (
+    <View style={styles.container}>
+      {title ? (
+        <Text style={styles.title} allowFontScaling={true}>{title}</Text>
+      ) : null}
+      {subtitle ? (
+        <Text style={styles.subtitle} allowFontScaling={true}>{subtitle}</Text>
+      ) : null}
+    </View>
+  )
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -28,9 +46,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingBottom: 80,
   },
-  emoji: {
-    fontSize: 48,
-    marginBottom: 16,
+  bigNumber: {
+    fontSize: 64,
+    fontWeight: '800',
+    color: colours.green,
+    fontVariant: ['tabular-nums'],
+  },
+  bigNumberLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 1.2,
+    color: colours.textMuted,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
+  feedSubtitle: {
+    fontSize: 13,
+    color: colours.textMuted,
+    marginTop: 8,
   },
   title: {
     fontSize: 17,

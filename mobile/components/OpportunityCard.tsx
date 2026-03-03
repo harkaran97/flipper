@@ -67,12 +67,12 @@ export const OpportunityCard: React.FC<Props> = ({ opportunity }) => {
   return (
     <View style={styles.wrapper}>
       <TouchableOpacity
-        style={[styles.saveAction, { backgroundColor: saved ? colours.riskHigh : colours.black }]}
+        style={[styles.saveAction, { backgroundColor: saved ? colours.danger : colours.black }]}
         onPress={handleSave}
         activeOpacity={0.8}
       >
         <Text style={styles.saveActionText} allowFontScaling={false}>
-          {saved ? '🗑' : '🔖'}
+          {saved ? '✕' : '↓'}
         </Text>
       </TouchableOpacity>
 
@@ -84,28 +84,38 @@ export const OpportunityCard: React.FC<Props> = ({ opportunity }) => {
           onPress={() => router.push(`/opportunity/${id}`)}
           activeOpacity={0.95}
         >
+          {/* Row 1: Logo + Car name + Class badge */}
           <View style={styles.topRow}>
             <CarLogo make={make} size={40} />
-            <View style={styles.nameBlock}>
-              <Text style={styles.carName} numberOfLines={1} allowFontScaling={true}>
-                {make} {model} {year ?? ''}
-              </Text>
-              <Text style={styles.askingPrice} allowFontScaling={true}>
-                {formatPrice(listing_price_pence)} asking
-              </Text>
-            </View>
+            <Text style={styles.carName} numberOfLines={1} allowFontScaling={true}>
+              {make} {model} {year ?? ''}
+            </Text>
             <BadgeClass opportunityClass={opportunity_class} />
           </View>
 
-          <View style={styles.profitRow}>
-            <Text style={styles.profit} allowFontScaling={true}>
-              {formatProfit(true_profit_pence)}
-            </Text>
-            <Text style={styles.days} allowFontScaling={true}>
-              {' · '}{formatDays(total_man_days)}
-            </Text>
+          {/* Row 2: 3-column metrics with UPPERCASE labels */}
+          <View style={styles.metricsRow}>
+            <View style={styles.metricCol}>
+              <Text style={styles.metricLabel} allowFontScaling={false}>PROFIT</Text>
+              <Text style={styles.profit} allowFontScaling={true}>
+                {formatProfit(true_profit_pence)}
+              </Text>
+            </View>
+            <View style={styles.metricCol}>
+              <Text style={styles.metricLabel} allowFontScaling={false}>ASKING</Text>
+              <Text style={styles.askingPrice} allowFontScaling={true}>
+                {formatPrice(listing_price_pence)}
+              </Text>
+            </View>
+            <View style={styles.metricCol}>
+              <Text style={styles.metricLabel} allowFontScaling={false}>DAYS</Text>
+              <Text style={styles.days} allowFontScaling={true}>
+                {formatDays(total_man_days)}
+              </Text>
+            </View>
           </View>
 
+          {/* Row 3: Fault summary + badges */}
           <View style={styles.bottomRow}>
             <Text style={styles.faultSummary} numberOfLines={1} allowFontScaling={true}>
               {detected_faults_summary ?? '—'}
@@ -132,9 +142,9 @@ export const OpportunityCard: React.FC<Props> = ({ opportunity }) => {
 const styles = StyleSheet.create({
   wrapper: {
     marginHorizontal: 16,
-    marginBottom: 10,
+    marginBottom: 8,
     overflow: 'hidden',
-    borderRadius: 12,
+    borderRadius: 8,
   },
   saveAction: {
     position: 'absolute',
@@ -144,48 +154,65 @@ const styles = StyleSheet.create({
     width: 80,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
+    borderRadius: 8,
   },
   saveActionText: {
-    fontSize: 24,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colours.white,
   },
   card: {
     backgroundColor: colours.bgCard,
-    borderRadius: 12,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: colours.border,
-    padding: 14,
+    padding: 16,
   },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 10,
+    marginBottom: 16,
   },
-  nameBlock: { flex: 1 },
   carName: {
-    fontSize: 17,
+    flex: 1,
+    fontSize: 15,
     fontWeight: '600',
     color: colours.textPrimary,
   },
-  askingPrice: {
-    fontSize: 13,
-    color: colours.textMuted,
-    marginTop: 2,
-  },
-  profitRow: {
+  metricsRow: {
     flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 8,
+    marginBottom: 16,
+    gap: 24,
+  },
+  metricCol: {
+    flexDirection: 'column',
+  },
+  metricLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    color: colours.textMuted,
+    textTransform: 'uppercase',
+    marginBottom: 2,
   },
   profit: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
     color: colours.green,
+    fontVariant: ['tabular-nums'],
+  },
+  askingPrice: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colours.textSecondary,
+    fontVariant: ['tabular-nums'],
   },
   days: {
-    fontSize: 15,
-    color: colours.textMuted,
+    fontSize: 14,
+    fontWeight: '500',
+    color: colours.textSecondary,
+    fontVariant: ['tabular-nums'],
   },
   bottomRow: {
     flexDirection: 'row',
@@ -194,14 +221,14 @@ const styles = StyleSheet.create({
   faultSummary: {
     flex: 1,
     fontSize: 13,
-    color: colours.textMuted,
+    color: colours.textSecondary,
   },
   badges: {
     flexDirection: 'row',
     gap: 6,
   },
   writeOffBadge: {
-    borderRadius: 6,
+    borderRadius: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },

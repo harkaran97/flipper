@@ -23,9 +23,8 @@ export default function BuildsScreen() {
         ListEmptyComponent={
           !isLoading ? (
             <EmptyState
-              emoji="🔧"
               title="No active builds."
-              subtitle="Save an opportunity and mark it as a build to track it here."
+              subtitle="Mark an opportunity as a build to track it here."
             />
           ) : null
         }
@@ -37,11 +36,11 @@ export default function BuildsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colours.bgSecondary,
+    backgroundColor: colours.bg,
   },
   list: {
-    paddingTop: 10,
-    paddingBottom: 20,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
   emptyContainer: {
     flexGrow: 1,
