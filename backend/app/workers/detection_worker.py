@@ -22,24 +22,23 @@ async def handle_new_listing(event: Event) -> None:
     Calls detect_problems() for the listing.
     On failure: logs error, does NOT crash the worker.
     """
-    listing_id_str = event.payload.get("listing_id")
-    if not listing_id_str:
-        logger.error("NEW_LISTING_FOUND event missing listing_id")
-        return
-
     try:
+        listing_id_str = event.payload.get("listing_id")
+        if not listing_id_str:
+            logger.error("NEW_LISTING_FOUND event missing listing_id")
+            return
+
         listing_id = uuid.UUID(listing_id_str)
-    except ValueError:
-        logger.error("Invalid listing_id in event: %s", listing_id_str)
-        return
+        logger.info("Detection worker processing listing %s", listing_id)
 
-    logger.info("Detection worker processing listing %s", listing_id)
-
-    try:
         async with AsyncSessionLocal() as session:
             await detect_problems(session, listing_id, _bus)
     except Exception:
-        logger.error("Detection failed for listing %s", listing_id, exc_info=True)
+        logger.error(
+            "Detection failed for listing %s",
+            event.payload.get("listing_id"),
+            exc_info=True,
+        )
 
 
 # Module-level bus reference, set by register_detection_worker

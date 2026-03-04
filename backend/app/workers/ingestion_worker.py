@@ -110,6 +110,7 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
                 "postcode": listing.postcode,
             },
         ))
+        listing.processed = True
         stats["stored"] += 1
 
     await session.commit()
