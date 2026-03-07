@@ -9,6 +9,36 @@ from app.adapters.base import (
 
 
 class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
+    # Vehicle data keyed by external_id, parsed from stub listing titles/descriptions.
+    # Used by the ingestion worker to seed Vehicle rows so the estimation pipeline
+    # can proceed without a real enrichment step.
+    STUB_VEHICLE_DATA: dict[str, dict] = {
+        "ebay_stub_001": {
+            "make": "BMW",
+            "model": "320d",
+            "year": 2015,
+            "engine_cc": 1995,
+            "fuel_type": "diesel",
+            "transmission": "manual",
+        },
+        "ebay_stub_002": {
+            "make": "Ford",
+            "model": "Focus",
+            "year": 2018,
+            "engine_cc": 999,
+            "fuel_type": "petrol",
+            "transmission": "manual",
+        },
+        "ebay_stub_003": {
+            "make": "Volkswagen",
+            "model": "Golf",
+            "year": 2016,
+            "engine_cc": 1598,
+            "fuel_type": "diesel",
+            "transmission": "manual",
+        },
+    }
+
     def __init__(self) -> None:
         self._call_count = 0
 
