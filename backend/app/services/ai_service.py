@@ -128,7 +128,7 @@ def select_model(fault_count: int, has_unknown_faults: bool) -> str:
     """
     if fault_count >= 3 or has_unknown_faults:
         return "claude-sonnet-4-5"
-    return "claude-haiku-4-5-20251001"
+    return "claude-haiku-4-5"
 
 
 async def detect_problems_ai(
