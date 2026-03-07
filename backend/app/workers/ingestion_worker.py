@@ -21,6 +21,7 @@ from app.core.database import AsyncSessionLocal
 from app.events.bus import EventBus
 from app.events.types import Event, EventType
 from app.models.listing import Listing
+from app.models.vehicle import Vehicle
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -99,6 +100,14 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
         )
         session.add(listing)
         await session.flush()
+
+        # Seed a Vehicle row when the adapter provides stub vehicle data.
+        # This allows the estimation pipeline to proceed without a real
+        # enrichment step parsing the listing text.
+        stub_vehicles: dict = getattr(adapter, "STUB_VEHICLE_DATA", {})
+        vehicle_data = stub_vehicles.get(raw.external_id)
+        if vehicle_data:
+            session.add(Vehicle(listing_id=listing.id, **vehicle_data))
 
         listing.processed = True
         await session.commit()
