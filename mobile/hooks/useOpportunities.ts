@@ -9,13 +9,14 @@ import { OpportunityCard } from '../lib/types'
 import { getSavedIds, getBuildStatuses } from '../lib/storage'
 
 const fetchOpportunities = async (): Promise<OpportunityCard[]> => {
+  console.log('fetchOpportunities called')
   const [response, savedIds, buildStatuses] = await Promise.all([
     // Backend returns OpportunityFeedResponse: { opportunities, total, has_more }
     // Base URL: API_BASE_URL (constants/config.ts) → defaults to Railway deployment /api/v1
     // Full endpoint: <API_BASE_URL>/opportunities
     api.get<{ opportunities: OpportunityCard[]; total: number; has_more: boolean }>('/opportunities'),
-    getSavedIds(),
-    getBuildStatuses(),
+    getSavedIds().catch(() => [] as string[]),
+    getBuildStatuses().catch(() => ({} as Record<string, string>)),
   ])
 
   // DEBUG: log the raw API response so we can see what the app actually receives
