@@ -100,6 +100,9 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
         session.add(listing)
         await session.flush()
 
+        listing.processed = True
+        await session.commit()
+
         await bus.emit(Event(
             type=EventType.NEW_LISTING_FOUND,
             payload={
@@ -110,10 +113,8 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
                 "postcode": listing.postcode,
             },
         ))
-        listing.processed = True
         stats["stored"] += 1
 
-    await session.commit()
     return stats
 
 
