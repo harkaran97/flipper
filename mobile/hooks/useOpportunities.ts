@@ -35,6 +35,7 @@ const fetchOpportunities = async (): Promise<OpportunityCard[]> => {
 }
 
 export const useOpportunities = () => {
+  console.log('useOpportunities hook running')
   return useQuery({
     queryKey: ['opportunities'],
     queryFn: fetchOpportunities,
