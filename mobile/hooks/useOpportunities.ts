@@ -10,11 +10,11 @@ import { getSavedIds, getBuildStatuses } from '../lib/storage'
 
 const fetchOpportunities = async (): Promise<OpportunityCard[]> => {
   const [response, savedIds, buildStatuses] = await Promise.all([
-    api.get<OpportunityCard[]>('/opportunities'),
+    api.get<{ opportunities: OpportunityCard[]; total: number }>('/opportunities'),
     getSavedIds(),
     getBuildStatuses(),
   ])
-  return response.data.map(opp => ({
+  return response.data.opportunities.map(opp => ({
     ...opp,
     saved: savedIds.includes(opp.id),
     status: buildStatuses[opp.id] === 'active_build'
