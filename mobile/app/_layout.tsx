@@ -23,14 +23,17 @@ const registerForPushNotifications = async () => {
   try {
     const { status } = await Notifications.requestPermissionsAsync()
     if (status !== 'granted') return
-    const token = await Notifications.getExpoPushTokenAsync()
+    const token = await Notifications.getExpoPushTokenAsync({
+      projectId: '@harkarankava/flipper',
+    })
     await api.post('/device-tokens', { token: token.data, platform: 'ios' })
-  } catch {
-    // non-fatal — app works without push
+  } catch (err) {
+    console.error('Push notification registration failed:', err)
   }
 }
 
 export default function RootLayout() {
+  console.log('RootLayout rendering')
   useEffect(() => {
     registerForPushNotifications()
   }, [])
