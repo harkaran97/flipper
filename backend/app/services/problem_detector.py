@@ -197,14 +197,23 @@ async def detect_problems(
     NOTE: No opportunity classification here. That happens in TASK_006
     once repair costs (TASK_004) and market value (TASK_005) are available.
     """
+    logger.info("[DETECTOR] Step 1: Loading listing %s from DB", listing_id)
+
     # 1. Load listing + vehicle data
     result = await session.execute(
         select(Listing).where(Listing.id == listing_id)
     )
     listing = result.scalar_one_or_none()
     if listing is None:
-        logger.error("Listing %s not found", listing_id)
+        logger.error("[DETECTOR] Step 1 FAILED: Listing %s not found in DB", listing_id)
         return
+
+    logger.info(
+        "[DETECTOR] Step 1 OK: Listing fetched — title=%r, description_len=%d, processed=%s",
+        listing.title,
+        len(listing.description or ""),
+        listing.processed,
+    )
 
     result = await session.execute(
         select(Vehicle).where(Vehicle.listing_id == listing_id)
@@ -218,16 +227,34 @@ async def detect_problems(
     fuel_type = vehicle.fuel_type if vehicle else None
     engine_code = None  # Not yet in vehicle model, will be added in enrichment
 
+    if vehicle:
+        logger.info(
+            "[DETECTOR] Step 1 OK: Vehicle fetched — %s %s %d fuel=%s",
+            make, model, year, fuel_type,
+        )
+    else:
+        logger.warning(
+            "[DETECTOR] Step 1 WARN: No vehicle row found for listing %s — using Unknown defaults",
+            listing_id,
+        )
+
     # 2. Check write-off keywords first (fast, no AI)
+    logger.info("[DETECTOR] Step 2: Running write-off keyword check")
     write_off_category = detect_writeoff_from_text(
         listing.title, listing.description or ""
     )
-    if write_off_category != WriteOffCategory.CLEAN:
-        logger.info("Listing %s: write-off detected — %s",
-                     listing_id, write_off_category.value)
+    logger.info(
+        "[DETECTOR] Step 2 OK: Write-off result = %s", write_off_category.value
+    )
 
     # 3. Check cars_common_problems for known faults
+    logger.info(
+        "[DETECTOR] Step 3: Querying known problems for %s %s %d",
+        make, model, year,
+    )
     known_problems = await get_known_problems_for_car(session, make, model, year)
+    logger.info("[DETECTOR] Step 3 OK: Found %d known problem(s)", len(known_problems))
+
     known_fault_types = set()
     if known_problems:
         # Load fault_type names for known problems
@@ -241,8 +268,13 @@ async def detect_problems(
             for kp in known_problems
             if kp.problem_id in problems_by_id
         }
+        logger.info("[DETECTOR] Step 3 OK: Known fault types = %s", known_fault_types)
 
     # 4. Run AI detection
+    logger.info(
+        "[DETECTOR] Step 4: Calling AI — make=%s model=%s year=%d known_faults=%d",
+        make, model, year, len(known_problems),
+    )
     ai_result = await detect_problems_ai(
         make=make,
         model=model,
@@ -254,10 +286,19 @@ async def detect_problems(
         known_fault_count=len(known_problems),
         has_unknown_faults=False,  # Will be determined after first pass
     )
+    logger.info(
+        "[DETECTOR] Step 4 OK: AI returned %d mechanical_fault(s), write_off=%s, "
+        "driveable=%s, overall_confidence=%s",
+        len(ai_result.get("mechanical_faults", [])),
+        ai_result.get("write_off_category"),
+        ai_result.get("driveable"),
+        ai_result.get("overall_confidence"),
+    )
 
     # 5. Process AI results — store detected faults
+    logger.info("[DETECTOR] Step 5: Saving detected faults to DB")
     detected_fault_ids = []
-    for fault in ai_result.get("mechanical_faults", []):
+    for i, fault in enumerate(ai_result.get("mechanical_faults", [])):
         fault_type = fault.get("fault_type", "unknown")
         severity = fault.get("severity", "medium")
         confidence = fault.get("confidence", 0.5)
@@ -267,6 +308,16 @@ async def detect_problems(
             source = FaultSource.PRE_SEEDED.value
         else:
             source = FaultSource.AI.value
+
+        logger.info(
+            "[DETECTOR] Step 5: Saving fault %d/%d — type=%r severity=%s confidence=%.2f source=%s",
+            i + 1,
+            len(ai_result.get("mechanical_faults", [])),
+            fault_type,
+            severity,
+            confidence,
+            source,
+        )
 
         detected = DetectedFault(
             listing_id=listing_id,
@@ -278,12 +329,25 @@ async def detect_problems(
         session.add(detected)
         await session.flush()
         detected_fault_ids.append(str(detected.id))
+        logger.info("[DETECTOR] Step 5 OK: Fault saved with id=%s", detected.id)
 
         # 5b. For novel faults not in cars_common_problems, enrich via LinkUp
         if fault_type not in known_fault_types and make != "Unknown":
+            logger.info(
+                "[DETECTOR] Step 5b: Novel fault %r not in known set — triggering LinkUp enrichment",
+                fault_type,
+            )
             await enrich_novel_fault(session, make, model, year, fault_type)
+            logger.info("[DETECTOR] Step 5b OK: LinkUp enrichment complete for %r", fault_type)
+
+    logger.info(
+        "[DETECTOR] Step 5 OK: %d fault(s) saved — ids=%s",
+        len(detected_fault_ids),
+        detected_fault_ids,
+    )
 
     # 6. Store exterior condition
+    logger.info("[DETECTOR] Step 6: Saving exterior condition")
     exterior = ai_result.get("exterior", {})
     ext_condition = ExteriorCondition(
         listing_id=listing_id,
@@ -303,9 +367,12 @@ async def detect_problems(
 
     # Mark listing as processed
     listing.processed = True
+    logger.info("[DETECTOR] Step 6 OK: ExteriorCondition added, marking listing.processed=True")
     await session.commit()
+    logger.info("[DETECTOR] Step 6 OK: DB commit complete")
 
     # 7. Emit PROBLEMS_DETECTED
+    logger.info("[DETECTOR] Step 7: Emitting PROBLEMS_DETECTED event")
     await bus.emit(Event(
         type=EventType.PROBLEMS_DETECTED,
         payload={
@@ -319,7 +386,7 @@ async def detect_problems(
     ))
 
     logger.info(
-        "Problems detected for listing %s: %d faults, write-off=%s",
+        "[DETECTOR] Step 7 OK: PROBLEMS_DETECTED emitted — listing=%s faults=%d write_off=%s",
         listing_id, len(detected_fault_ids), write_off_category.value,
     )
 

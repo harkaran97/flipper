@@ -22,20 +22,29 @@ async def handle_new_listing(event: Event) -> None:
     Calls detect_problems() for the listing.
     On failure: logs error, does NOT crash the worker.
     """
+    logger.info(
+        "[DETECTION] Event received: type=%s payload=%s",
+        event.type,
+        event.payload,
+    )
+
     try:
         listing_id_str = event.payload.get("listing_id")
         if not listing_id_str:
-            logger.error("NEW_LISTING_FOUND event missing listing_id")
+            logger.error("[DETECTION] NEW_LISTING_FOUND event missing listing_id — payload: %s", event.payload)
             return
 
+        logger.info("[DETECTION] Extracted listing_id=%s, opening DB session", listing_id_str)
         listing_id = uuid.UUID(listing_id_str)
-        logger.info("Detection worker processing listing %s", listing_id)
 
         async with AsyncSessionLocal() as session:
+            logger.info("[DETECTION] DB session opened, calling detect_problems for listing %s", listing_id)
             await detect_problems(session, listing_id, _bus)
+            logger.info("[DETECTION] detect_problems completed for listing %s", listing_id)
+
     except Exception:
         logger.error(
-            "Detection failed for listing %s",
+            "[DETECTION] Detection failed for listing %s",
             event.payload.get("listing_id"),
             exc_info=True,
         )
@@ -52,4 +61,6 @@ def register_detection_worker(bus: EventBus) -> None:
     """
     global _bus
     _bus = bus
+    logger.info("[DETECTION] Registering detection worker for EventType.NEW_LISTING_FOUND")
     bus.subscribe(EventType.NEW_LISTING_FOUND, handle_new_listing)
+    logger.info("[DETECTION] Detection worker registered successfully")

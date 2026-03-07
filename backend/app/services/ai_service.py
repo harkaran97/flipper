@@ -148,9 +148,23 @@ async def detect_problems_ai(
 
     In stub mode (no API key), returns a realistic hardcoded response.
     """
+    # Verify and log API key configuration
+    api_key = settings.anthropic_api_key
+    if api_key:
+        logger.info(
+            "[AI_SERVICE] ANTHROPIC_API_KEY is set (prefix=%s...)",
+            api_key[:10] if len(api_key) > 10 else "<short>",
+        )
+    else:
+        logger.warning(
+            "[AI_SERVICE] ANTHROPIC_API_KEY is NOT set — "
+            "check config.py reads env var ANTHROPIC_API_KEY correctly. "
+            "Running in stub mode."
+        )
+
     # Stub mode — return hardcoded response when no API key
-    if not settings.anthropic_api_key:
-        logger.info("AI service running in stub mode (no ANTHROPIC_API_KEY)")
+    if not api_key:
+        logger.info("[AI_SERVICE] Returning STUB_AI_RESPONSE (no API key configured)")
         return STUB_AI_RESPONSE
 
     model_id = select_model(known_fault_count, has_unknown_faults)
@@ -166,16 +180,40 @@ async def detect_problems_ai(
         description=description,
     )
 
+    logger.info(
+        "[AI_SERVICE] Calling Anthropic API — model=%s make=%s model_name=%s year=%d prompt_len=%d",
+        model_id, make, model, year, len(prompt),
+    )
+
     try:
         import anthropic
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        client = anthropic.Anthropic(api_key=api_key)
         message = client.messages.create(
             model=model_id,
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
         )
         response_text = message.content[0].text
-        return json.loads(response_text)
+        logger.info(
+            "[AI_SERVICE] Anthropic API call succeeded — response_len=%d input_tokens=%s output_tokens=%s",
+            len(response_text),
+            getattr(message.usage, "input_tokens", "?"),
+            getattr(message.usage, "output_tokens", "?"),
+        )
+        parsed = json.loads(response_text)
+        logger.info(
+            "[AI_SERVICE] JSON parsed OK — mechanical_faults=%d write_off=%s",
+            len(parsed.get("mechanical_faults", [])),
+            parsed.get("write_off_category"),
+        )
+        return parsed
+    except json.JSONDecodeError:
+        logger.error(
+            "[AI_SERVICE] Failed to parse JSON from AI response: %r",
+            response_text[:500] if "response_text" in dir() else "<no response>",
+            exc_info=True,
+        )
+        return STUB_AI_RESPONSE
     except Exception:
-        logger.error("AI detection failed, returning stub response", exc_info=True)
+        logger.error("[AI_SERVICE] Anthropic API call failed, returning stub response", exc_info=True)
         return STUB_AI_RESPONSE
