@@ -1,6 +1,6 @@
 /**
  * Tab bar configuration. Three tabs: Opportunities, Saved, My Builds.
- * Icon-only (no labels). Active tab in black, inactive in grey.
+ * Active tab in black, inactive in grey.
  */
 import React from 'react'
 import { Tabs } from 'expo-router'
@@ -13,7 +13,12 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colours.tabActive,
         tabBarInactiveTintColor: colours.tabInactive,
-        tabBarShowLabel: false,
+        tabBarShowLabel: true,
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '600',
+          letterSpacing: 0.2,
+        },
         tabBarStyle: {
           backgroundColor: colours.bg,
           borderTopWidth: 1,
@@ -25,6 +30,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
+          title: 'Opportunities',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="trending-up" size={size} color={color} />
           ),
@@ -33,6 +39,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="saved"
         options={{
+          title: 'Saved',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="bookmark" size={size} color={color} />
           ),
@@ -41,6 +48,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="builds"
         options={{
+          title: 'My Builds',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="construct" size={size} color={color} />
           ),

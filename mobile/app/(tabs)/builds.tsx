@@ -3,7 +3,7 @@
  * Promoted from detail screen via "Mark as Build" button.
  */
 import React, { useMemo } from 'react'
-import { FlatList, StyleSheet, SafeAreaView } from 'react-native'
+import { FlatList, StyleSheet, SafeAreaView, View, Text } from 'react-native'
 import { useOpportunities } from '../../hooks/useOpportunities'
 import { OpportunityCard } from '../../components/OpportunityCard'
 import { EmptyState } from '../../components/EmptyState'
@@ -15,6 +15,10 @@ export default function BuildsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title} allowFontScaling={false}>My Builds</Text>
+      </View>
+
       <FlatList
         data={builds}
         keyExtractor={item => item.id}
@@ -37,6 +41,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colours.bg,
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+    color: colours.black,
   },
   list: {
     paddingTop: 8,

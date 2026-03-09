@@ -18,7 +18,6 @@ import { colours } from '../../constants/colours'
 import { useQueryClient } from '@tanstack/react-query'
 
 export default function OpportunitiesScreen() {
-  console.log('OpportunitiesScreen mounted')
   const { data = [], isLoading } = useOpportunities()
   const { triggerRefresh, isRefreshing } = useRefresh()
   const queryClient = useQueryClient()

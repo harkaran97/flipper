@@ -72,7 +72,7 @@ export const OpportunityCard: React.FC<Props> = ({ opportunity }) => {
         activeOpacity={0.8}
       >
         <Text style={styles.saveActionText} allowFontScaling={false}>
-          {saved ? '✕' : '↓'}
+          {saved ? 'Remove' : 'Save'}
         </Text>
       </TouchableOpacity>
 
@@ -157,9 +157,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   saveActionText: {
-    fontSize: 18,
+    fontSize: 13,
     fontWeight: '700',
     color: colours.white,
+    letterSpacing: 0.3,
   },
   card: {
     backgroundColor: colours.bgCard,

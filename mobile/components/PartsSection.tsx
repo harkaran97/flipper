@@ -66,14 +66,14 @@ export const PartsSection: React.FC<Props> = ({ breakdown }) => {
 }
 
 const styles = StyleSheet.create({
-  container: { marginTop: 24 },
+  container: {},
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colours.textSecondary,
+    fontSize: 10,
+    fontWeight: '600',
+    color: colours.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 12,
+    letterSpacing: 0.8,
+    marginBottom: 8,
   },
   faultGroup: {
     marginBottom: 20,

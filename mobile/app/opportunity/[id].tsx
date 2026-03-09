@@ -108,15 +108,6 @@ export default function OpportunityDetailScreen() {
           </Text>
         </View>
 
-        {/* Unpriced faults */}
-        {opportunity.unpriced_fault_types && opportunity.unpriced_fault_types.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.unpricedLabel} allowFontScaling={true}>
-              Unpriced faults: {opportunity.unpriced_fault_types.join(', ')}
-            </Text>
-          </View>
-        )}
-
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
@@ -190,10 +181,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colours.textSecondary,
     fontVariant: ['tabular-nums'],
-  },
-  unpricedLabel: {
-    fontSize: 13,
-    color: colours.riskMedium,
   },
   bottomSpacer: {
     height: 40,
