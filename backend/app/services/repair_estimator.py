@@ -47,14 +47,9 @@ _parts_pricing_service = PartsPricingService()
 _FAULT_CACHE_TTL_DAYS = 1
 
 
-def _year_band(year: int) -> int:
-    """Returns 5-year band start (e.g., 2019 → 2015, 2023 → 2020)."""
-    return (year // 5) * 5
-
-
 def _fault_cache_key(make: str, model: str, year: int, fault_type: str) -> str:
-    """Builds fault_cache key: {make}_{model}_{year_band}_{fault_type}."""
-    return f"{make.lower()}_{model.lower()}_{_year_band(year)}_{fault_type}"
+    """Builds fault_cache key: {make}_{model}_{year}_{fault_type}."""
+    return f"{make.lower()}_{model.lower()}_{year}_{fault_type}"
 
 
 def _is_cache_valid(entry: FaultCache) -> bool:
