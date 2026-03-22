@@ -24,7 +24,7 @@ async def search_market_value(
     client = get_client()
     response = await asyncio.to_thread(
         client.search,
-        q=query,
+        query=query,
         depth="standard",
         output_type="structured",
         structured_output_schema=schema,
