@@ -20,6 +20,7 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
             "engine_cc": 1995,
             "fuel_type": "diesel",
             "transmission": "manual",
+            "trim": "d",
         },
         "ebay_stub_002": {
             "make": "Ford",
@@ -28,6 +29,7 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
             "engine_cc": 999,
             "fuel_type": "petrol",
             "transmission": "manual",
+            "trim": "EcoBoost",
         },
         "ebay_stub_003": {
             "make": "Volkswagen",
@@ -36,6 +38,7 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
             "engine_cc": 1598,
             "fuel_type": "diesel",
             "transmission": "manual",
+            "trim": "TDI",
         },
     }
 
