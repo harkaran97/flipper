@@ -135,16 +135,6 @@ STUB_AI_RESPONSE = {
 }
 
 
-def select_model(fault_count: int, has_unknown_faults: bool) -> str:
-    """
-    Use Haiku for simple/known fault classification.
-    Use Sonnet only when listing has 3+ potential faults OR unknown fault types.
-    """
-    if fault_count >= 3 or has_unknown_faults:
-        return "claude-sonnet-4-5"
-    return "claude-haiku-4-5"
-
-
 async def detect_problems_ai(
     make: str,
     model: str,
@@ -181,7 +171,7 @@ async def detect_problems_ai(
         logger.info("[AI_SERVICE] Returning STUB_AI_RESPONSE (no API key configured)")
         return STUB_AI_RESPONSE
 
-    model_id = select_model(known_fault_count, has_unknown_faults)
+    model_id = "claude-haiku-4-5"
     engine_code_line = f"Engine code: {engine_code}" if engine_code else ""
 
     prompt = PROBLEM_DETECTION_PROMPT.format(
