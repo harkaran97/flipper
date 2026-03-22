@@ -164,8 +164,8 @@ async def enrich_novel_fault(
         session.add(CarsCommonProblem(
             car_id=car.id,
             problem_id=problem.id,
-            repair_min_pence=repair_min_pence,
-            repair_max_pence=repair_max_pence,
+            repair_parts_min_pence=repair_min_pence,
+            repair_parts_max_pence=repair_max_pence,
             source=CommonProblemSource.LINKUP_CONFIRMED.value,
         ))
         await session.flush()
