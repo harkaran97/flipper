@@ -16,17 +16,10 @@ import logging
 
 from app.adapters.base import SearchResult
 from app.adapters.linkup.stub import PARTS_STUB_DEFAULT, PARTS_STUB_RESULTS, LinkUpStubAdapter
+import app.adapters.linkup.search as linkup_search
 from config import settings
 
 logger = logging.getLogger(__name__)
-
-
-def get_search_adapter():
-    """Returns stub or live adapter based on config."""
-    if settings.linkup_stub:
-        return LinkUpStubAdapter()
-    # Live adapter not yet implemented — LINKUP_STUB must be true for now
-    return LinkUpStubAdapter()
 
 
 async def search_fault_intelligence(
@@ -39,13 +32,15 @@ async def search_fault_intelligence(
     Searches for repair cost and fault intelligence for a specific
     fault on a specific vehicle model.
 
-    Query format: "{make} {model} {year} {fault_type} repair cost UK common problem"
+    Query format: "{make} {model} {year} {fault_type} repair cost common problem UK"
     """
-    adapter = get_search_adapter()
-    query = f"{make} {model} {year} {fault_type} repair cost UK common problem"
-    logger.info("Searching fault intelligence: %s", query)
-    result = await adapter.web_search(query)
-    return result
+    if settings.linkup_stub:
+        query = f"{make} {model} {year} {fault_type} repair cost UK common problem"
+        logger.info("Searching fault intelligence (stub): %s", query)
+        return await LinkUpStubAdapter().web_search(query)
+
+    logger.info("Searching fault intelligence (live): %s %s %d %s", make, model, year, fault_type)
+    return await linkup_search.search_fault_intelligence(make, model, year, fault_type)
 
 
 async def search_market_value(
@@ -61,12 +56,14 @@ async def search_market_value(
     Query format: "{make} {model} {year} {write_off_label} sold price UK"
     Example: "BMW 3 Series 2010 cat n sold price UK"
     """
-    adapter = get_search_adapter()
-    label_part = f" {write_off_label}" if write_off_label else ""
-    query = f"{make} {model} {year}{label_part} sold price UK"
-    logger.info("Searching market value fallback: %s", query)
-    result = await adapter.web_search(query)
-    return result
+    if settings.linkup_stub:
+        label_part = f" {write_off_label}" if write_off_label else ""
+        query = f"{make} {model} {year}{label_part} sold price UK"
+        logger.info("Searching market value fallback (stub): %s", query)
+        return await LinkUpStubAdapter().web_search(query)
+
+    logger.info("Searching market value fallback (live): %s %s %d %s", make, model, year, write_off_label)
+    return await linkup_search.search_market_value(make, model, year, write_off_label)
 async def search_parts_price(
     make: str,
     model: str,
