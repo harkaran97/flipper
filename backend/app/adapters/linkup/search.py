@@ -13,7 +13,13 @@ async def search_market_value(
 ) -> SearchResult:
     current_month_year = date.today().strftime("%B %Y")
     label_part = f" {write_off_category}" if write_off_category else ""
-    query = f"What do {year} {make} {model}{label_part} cars typically sell for in the UK as of {current_month_year}? Find recent sold prices from eBay, AutoTrader, and car auction sites."
+    query = (
+        f"You are a UK car market analyst. Find recent sold prices for a {year} {make} {model}{label_part} "
+        f"in the UK as of {current_month_year}. "
+        f" Search these UK sources: eBay Motors UK completed listings, AutoTrader UK, PistonHeads, "
+        f"BCA/Manheim auction results. "
+        f" Extract sold prices only (not asking prices). UK sales only. Exclude non-GBP listings."
+    )
     schema = '{"type":"object","properties":{"median_sold_price_gbp":{"type":"number"},"price_range_low_gbp":{"type":"number"},"price_range_high_gbp":{"type":"number"},"sample_count":{"type":"integer"}},"required":["median_sold_price_gbp","price_range_low_gbp","price_range_high_gbp"]}'
     client = get_client()
     response = await asyncio.to_thread(
