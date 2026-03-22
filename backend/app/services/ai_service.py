@@ -200,6 +200,7 @@ async def detect_problems_ai(
             getattr(message.usage, "input_tokens", "?"),
             getattr(message.usage, "output_tokens", "?"),
         )
+        response_text = response_text.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
         parsed = json.loads(response_text)
         logger.info(
             "[AI_SERVICE] JSON parsed OK — mechanical_faults=%d write_off=%s",
