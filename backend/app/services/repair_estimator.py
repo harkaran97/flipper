@@ -6,8 +6,10 @@ Produces repair estimates for a listing.
 Logic:
 1. Load detected faults for this listing
 2. For each fault:
-   a. Look up fault_parts — get parts list
-   b. For each part: call PartsPricingService (cache-first, multi-source, TTL 24h)
+   a. Check fault_cache for a valid TTL entry keyed by
+      {make}_{model}_{year_band}_{fault_type} — use cached costs on hit
+   b. On miss: look up fault_parts, call PartsPricingService
+      (cache-first, multi-source, TTL 24h), write result to fault_cache
    c. Use cheapest_pence for repair_cost_min, median for repair_cost_max
 3. Look up labour_days from cars_common_problems (override)
    or common_problems (default)
@@ -17,6 +19,7 @@ Logic:
 """
 import logging
 import uuid
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +29,7 @@ from app.events.types import Event, EventType
 from app.models.car import Car
 from app.models.cars_common_problems import CarsCommonProblem
 from app.models.common_problem import CommonProblem
-from app.models.fault import DetectedFault
+from app.models.fault import DetectedFault, FaultCache
 from app.models.fault_part import FaultPart
 from app.models.listing import Listing
 from app.models.repair_estimate import RepairEstimate
@@ -41,6 +44,72 @@ _PRICE_CEILING_PENCE = 1_000_000
 
 _parts_pricing_service = PartsPricingService()
 
+_FAULT_CACHE_TTL_DAYS = 30
+
+
+def _year_band(year: int) -> int:
+    """Returns 5-year band start (e.g., 2019 → 2015, 2023 → 2020)."""
+    return (year // 5) * 5
+
+
+def _fault_cache_key(make: str, model: str, year: int, fault_type: str) -> str:
+    """Builds fault_cache key: {make}_{model}_{year_band}_{fault_type}."""
+    return f"{make.lower()}_{model.lower()}_{_year_band(year)}_{fault_type}"
+
+
+def _is_cache_valid(entry: FaultCache) -> bool:
+    """Returns True if the cache entry is within its TTL."""
+    return datetime.utcnow() < entry.created_at + timedelta(days=entry.ttl_days)
+
+
+async def _read_fault_cache(
+    session: AsyncSession, cache_key: str
+) -> FaultCache | None:
+    """Returns a valid (non-expired) FaultCache entry, or None on miss/expiry."""
+    result = await session.execute(
+        select(FaultCache).where(FaultCache.cache_key == cache_key)
+    )
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        return None
+    if not _is_cache_valid(entry):
+        logger.info(
+            "[ESTIMATOR] fault_cache EXPIRED for key=%r (created=%s ttl=%dd)",
+            cache_key, entry.created_at, entry.ttl_days,
+        )
+        return None
+    return entry
+
+
+async def _write_fault_cache(
+    session: AsyncSession,
+    cache_key: str,
+    repair_min_pence: int,
+    repair_max_pence: int,
+) -> None:
+    """
+    Upserts repair cost data into fault_cache under cache_key.
+    Resets created_at on update so the TTL window slides forward.
+    """
+    result = await session.execute(
+        select(FaultCache).where(FaultCache.cache_key == cache_key)
+    )
+    entry = result.scalar_one_or_none()
+    if entry is not None:
+        entry.repair_min_pence = repair_min_pence
+        entry.repair_max_pence = repair_max_pence
+        entry.created_at = datetime.utcnow()
+        logger.info("[ESTIMATOR] fault_cache UPDATED for key=%r", cache_key)
+    else:
+        session.add(FaultCache(
+            cache_key=cache_key,
+            repair_min_pence=repair_min_pence,
+            repair_max_pence=repair_max_pence,
+            ttl_days=_FAULT_CACHE_TTL_DAYS,
+        ))
+        logger.info("[ESTIMATOR] fault_cache CREATED for key=%r", cache_key)
+    await session.flush()
+
 
 async def estimate_repairs(
     session: AsyncSession,
@@ -50,8 +119,9 @@ async def estimate_repairs(
     """
     Full repair estimation pipeline for one listing.
     1. Load listing + vehicle + detected faults
-    2. For each fault → get parts list from fault_parts
-    3. For each part → call PartsPricingService (multi-source, cache-first)
+    2. For each fault → check fault_cache; on hit use cached costs directly
+    3. On miss → get parts list from fault_parts, call PartsPricingService,
+       write result back to fault_cache (TTL 30 days)
     4. Sum parts cost (cheapest for min, median for max) + man days
     5. Store RepairEstimate
     6. Emit REPAIR_ESTIMATED
@@ -92,46 +162,71 @@ async def estimate_repairs(
     for fault in faults:
         fault_type = fault.issue
 
-        # Get parts list for this fault
-        result = await session.execute(
-            select(FaultPart).where(FaultPart.fault_type == fault_type)
-        )
-        parts = result.scalars().all()
+        # Check fault_cache before calling PartsPricingService
+        fc_key = _fault_cache_key(vehicle.make, vehicle.model, vehicle.year, fault_type)
+        cache_entry = await _read_fault_cache(session, fc_key)
 
-        if not parts:
-            logger.info("No parts defined for fault '%s' — marking as unpriced", fault_type)
-            unpriced_fault_types.append(fault_type)
-        elif listing.price_pence <= _PRICE_CEILING_PENCE:
-            # Search prices for each part via the multi-source service
-            fault_cheapest_sum = 0
-            fault_median_sum = 0
+        if cache_entry is not None:
+            logger.info(
+                "[ESTIMATOR] fault_cache HIT for key=%r — min=%dp max=%dp",
+                fc_key, cache_entry.repair_min_pence, cache_entry.repair_max_pence,
+            )
+            total_parts_min += cache_entry.repair_min_pence
+            total_parts_max += cache_entry.repair_max_pence
+        else:
+            logger.info("[ESTIMATOR] fault_cache MISS for key=%r — querying parts pricing", fc_key)
 
-            for part in parts:
-                try:
-                    pricing = await _parts_pricing_service.get_prices(
-                        part_name=part.part_name,
-                        make=vehicle.make,
-                        model=vehicle.model,
-                        year=vehicle.year,
-                        postcode=settings.user_postcode,
-                        session=session,
-                    )
-                    if pricing.results:
-                        cheapest = pricing.cheapest_pence or 0
-                        median = _parts_pricing_service.compute_median_total_pence(pricing) or cheapest
-                        fault_cheapest_sum += cheapest
-                        fault_median_sum += median
-                        logger.debug(
-                            "Part '%s': cheapest=%dp, median=%dp",
-                            part.part_name, cheapest, median,
+            # Get parts list for this fault
+            result = await session.execute(
+                select(FaultPart).where(FaultPart.fault_type == fault_type)
+            )
+            parts = result.scalars().all()
+
+            if not parts:
+                logger.info("No parts defined for fault '%s' — marking as unpriced", fault_type)
+                unpriced_fault_types.append(fault_type)
+            elif listing.price_pence <= _PRICE_CEILING_PENCE:
+                # Search prices for each part via the multi-source service
+                fault_cheapest_sum = 0
+                fault_median_sum = 0
+
+                for part in parts:
+                    try:
+                        pricing = await _parts_pricing_service.get_prices(
+                            part_name=part.part_name,
+                            make=vehicle.make,
+                            model=vehicle.model,
+                            year=vehicle.year,
+                            postcode=settings.user_postcode,
+                            session=session,
                         )
-                except Exception:
-                    logger.warning(
-                        "Parts pricing failed for '%s' — skipping", part.part_name, exc_info=True
-                    )
+                        if pricing.results:
+                            cheapest = pricing.cheapest_pence or 0
+                            median = _parts_pricing_service.compute_median_total_pence(pricing) or cheapest
+                            fault_cheapest_sum += cheapest
+                            fault_median_sum += median
+                            logger.debug(
+                                "Part '%s': cheapest=%dp, median=%dp",
+                                part.part_name, cheapest, median,
+                            )
+                    except Exception:
+                        logger.warning(
+                            "Parts pricing failed for '%s' — skipping", part.part_name, exc_info=True
+                        )
 
-            total_parts_min += fault_cheapest_sum
-            total_parts_max += fault_median_sum
+                total_parts_min += fault_cheapest_sum
+                total_parts_max += fault_median_sum
+
+                # Write result to fault_cache for future reuse
+                if fault_cheapest_sum > 0 or fault_median_sum > 0:
+                    try:
+                        await _write_fault_cache(
+                            session, fc_key, fault_cheapest_sum, fault_median_sum
+                        )
+                    except Exception:
+                        logger.warning(
+                            "[ESTIMATOR] Could not write fault_cache for key=%r", fc_key, exc_info=True
+                        )
 
         # Add labour days
         labour = await get_labour_days(session, fault_type, car_id)
