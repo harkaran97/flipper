@@ -7,6 +7,7 @@ from app.api.device_tokens import router as device_tokens_router
 from app.api.health import router as health_router
 from app.api.opportunities import router as opportunities_router
 from app.api.refresh import router as refresh_router
+from app.api.reset_pipeline import router as reset_pipeline_router
 from app.core.logging import setup_logging
 from app.events.bus import EventBus
 from config import settings
@@ -16,6 +17,7 @@ app.include_router(health_router)
 app.include_router(opportunities_router, prefix="/api/v1")
 app.include_router(refresh_router, prefix="/api/v1")
 app.include_router(device_tokens_router, prefix="/api/v1")
+app.include_router(reset_pipeline_router, prefix="/api/v1")
 
 logger = logging.getLogger(__name__)
 
