@@ -190,7 +190,7 @@ async def detect_problems_ai(
         client = anthropic.Anthropic(api_key=api_key)
         message = client.messages.create(
             model=model_id,
-            max_tokens=512,
+            max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
         response_text = message.content[0].text
@@ -201,6 +201,10 @@ async def detect_problems_ai(
             getattr(message.usage, "output_tokens", "?"),
         )
         response_text = response_text.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+        start = response_text.find('{')
+        end = response_text.rfind('}')
+        if start != -1 and end != -1:
+            response_text = response_text[start:end + 1]
         parsed = json.loads(response_text)
         logger.info(
             "[AI_SERVICE] JSON parsed OK — mechanical_faults=%d write_off=%s",
