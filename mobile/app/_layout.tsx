@@ -1,42 +1,15 @@
 /**
- * Root layout: sets up React Query provider, requests push notification
- * permissions on first launch, and registers the device token with the backend.
+ * Root layout: sets up React Query provider.
  */
 import '../global.css'
-import React, { useEffect } from 'react'
+import React from 'react'
 import { Stack } from 'expo-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import * as Notifications from 'expo-notifications'
-import { api } from '../lib/api'
 
 const queryClient = new QueryClient()
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-})
-
-const registerForPushNotifications = async () => {
-  try {
-    const { status } = await Notifications.requestPermissionsAsync()
-    if (status !== 'granted') return
-    const token = await Notifications.getExpoPushTokenAsync({
-      projectId: '@harkarankava/flipper',
-    })
-    await api.post('/device-tokens', { token: token.data, platform: 'ios' })
-  } catch (err) {
-    console.error('Push notification registration failed:', err)
-  }
-}
-
 export default function RootLayout() {
   console.log('RootLayout rendering')
-  useEffect(() => {
-    registerForPushNotifications()
-  }, [])
 
   return (
     <QueryClientProvider client={queryClient}>
