@@ -34,7 +34,8 @@ class PartListing:
 class SearchResult:
     query: str
     summary: str
-    sources: list[str]
+    sources: list[str] = None
+    structured_data: dict | None = None
 
 
 class BaseListingsAdapter(ABC):

@@ -11,7 +11,6 @@ Rules:
 - Never blocks pipeline — always produces an estimate even if low confidence
 """
 import logging
-import re
 import uuid
 
 from sqlalchemy import select
@@ -107,24 +106,6 @@ def build_comp_search_query(
     return category_terms.get(write_off_category, base)
 
 
-def _parse_prices_from_text(text: str) -> list[int]:
-    """
-    Extracts GBP prices (in pence) from a text summary.
-    Matches patterns like £300, £1,500, £2000.
-    Returns prices as pence (integer).
-    """
-    # Match £ followed by digits with optional comma separators
-    matches = re.findall(r"£([\d,]+)", text)
-    prices = []
-    for match in matches:
-        try:
-            price_pounds = int(match.replace(",", ""))
-            prices.append(price_pounds * 100)
-        except ValueError:
-            continue
-    return prices
-
-
 async def estimate_market_value(
     session: AsyncSession,
     listing_id: uuid.UUID,
@@ -196,9 +177,12 @@ async def estimate_market_value(
                 year=year,
                 write_off_label=write_off_label,
             )
-            fallback_prices = _parse_prices_from_text(fallback_result.summary)
-            if fallback_prices:
-                prices.extend(fallback_prices)
+            data = fallback_result.structured_data or {}
+            median = int(data.get("median_sold_price_gbp", 0) * 100)
+            low = int(data.get("price_range_low_gbp", 0) * 100)
+            high = int(data.get("price_range_high_gbp", 0) * 100)
+            if median > 0:
+                prices = [low, median, high]
                 source = MarketValueSource.LINKUP_FALLBACK.value
             linkup_fallback_used = True
         except Exception:
