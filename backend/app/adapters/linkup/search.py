@@ -29,4 +29,4 @@ async def search_market_value(
         output_type="structured",
         structured_output_schema=schema,
     )
-    return SearchResult(query=query, summary="", structured_data=response.output)
+    return SearchResult(query=query, summary="", structured_data=response)
