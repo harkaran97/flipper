@@ -44,7 +44,7 @@ _PRICE_CEILING_PENCE = 1_000_000
 
 _parts_pricing_service = PartsPricingService()
 
-_FAULT_CACHE_TTL_DAYS = 30
+_FAULT_CACHE_TTL_DAYS = 1
 
 
 def _year_band(year: int) -> int:
@@ -121,7 +121,7 @@ async def estimate_repairs(
     1. Load listing + vehicle + detected faults
     2. For each fault → check fault_cache; on hit use cached costs directly
     3. On miss → get parts list from fault_parts, call PartsPricingService,
-       write result back to fault_cache (TTL 30 days)
+       write result back to fault_cache (TTL 1 day)
     4. Sum parts cost (cheapest for min, median for max) + man days
     5. Store RepairEstimate
     6. Emit REPAIR_ESTIMATED
