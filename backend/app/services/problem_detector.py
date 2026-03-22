@@ -337,8 +337,15 @@ async def detect_problems(
                 "[DETECTOR] Step 5b: Novel fault %r not in known set — triggering LinkUp enrichment",
                 fault_type,
             )
-            await enrich_novel_fault(session, make, model, year, fault_type)
-            logger.info("[DETECTOR] Step 5b OK: LinkUp enrichment complete for %r", fault_type)
+            try:
+                await enrich_novel_fault(session, make, model, year, fault_type)
+                logger.info("[DETECTOR] Step 5b OK: LinkUp enrichment complete for %r", fault_type)
+            except Exception as exc:
+                logger.warning(
+                    "[DETECTOR] Step 5b WARN: LinkUp enrichment failed for %r — %s",
+                    fault_type,
+                    exc,
+                )
 
     logger.info(
         "[DETECTOR] Step 5 OK: %d fault(s) saved — ids=%s",
