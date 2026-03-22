@@ -214,6 +214,9 @@ async def detect_problems_ai(
             exc_info=True,
         )
         return STUB_AI_RESPONSE
-    except Exception:
-        logger.error("[AI_SERVICE] Anthropic API call failed, returning stub response", exc_info=True)
+    except Exception as e:
+        if hasattr(e, 'response') and getattr(e.response, 'status_code', None) == 400:
+            logger.error('Anthropic 400 response body: %s', e.response.text, exc_info=True)
+        else:
+            logger.error("[AI_SERVICE] Anthropic API call failed, returning stub response", exc_info=True)
         return STUB_AI_RESPONSE
