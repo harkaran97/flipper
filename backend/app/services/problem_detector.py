@@ -23,7 +23,6 @@ from app.models.fault import DetectedFault
 from app.models.listing import Listing
 from app.models.vehicle import Vehicle
 from app.services.ai_service import detect_problems_ai
-from app.services.search_service import search_fault_intelligence
 
 logger = logging.getLogger(__name__)
 
@@ -102,17 +101,10 @@ async def enrich_novel_fault(
 ) -> dict:
     """
     Called when AI detects a fault not in cars_common_problems.
-    Uses search_service to find repair cost intelligence.
     Stores result in cars_common_problems for future reuse.
-    Returns repair cost range dict.
+    Returns repair cost range dict with hardcoded defaults.
     """
-    search_result = await search_fault_intelligence(
-        make=make, model=model, year=year, fault_type=fault_type
-    )
-    logger.info("LinkUp enrichment for %s %s %s: %s",
-                make, model, fault_type, search_result.query)
-
-    # Default cost range from stub/search — will be refined by TASK_004
+    # Default cost range — will be refined by TASK_004
     repair_min_pence = 30000  # £300 minimum
     repair_max_pence = 80000  # £800 maximum
 
@@ -166,14 +158,13 @@ async def enrich_novel_fault(
             problem_id=problem.id,
             repair_parts_min_pence=repair_min_pence,
             repair_parts_max_pence=repair_max_pence,
-            source=CommonProblemSource.LINKUP_CONFIRMED.value,
+            source=CommonProblemSource.SYSTEM_OBSERVED.value,
         ))
         await session.flush()
 
     return {
         "repair_min_pence": repair_min_pence,
         "repair_max_pence": repair_max_pence,
-        "search_summary": search_result.summary,
     }
 
 
@@ -334,15 +325,15 @@ async def detect_problems(
         # 5b. For novel faults not in cars_common_problems, enrich via LinkUp
         if fault_type not in known_fault_types and make != "Unknown":
             logger.info(
-                "[DETECTOR] Step 5b: Novel fault %r not in known set — triggering LinkUp enrichment",
+                "[DETECTOR] Step 5b: Novel fault %r not in known set — triggering fault enrichment",
                 fault_type,
             )
             try:
                 await enrich_novel_fault(session, make, model, year, fault_type)
-                logger.info("[DETECTOR] Step 5b OK: LinkUp enrichment complete for %r", fault_type)
+                logger.info("[DETECTOR] Step 5b OK: fault enrichment complete for %r", fault_type)
             except Exception as exc:
                 logger.warning(
-                    "[DETECTOR] Step 5b WARN: LinkUp enrichment failed for %r — %s",
+                    "[DETECTOR] Step 5b WARN: fault enrichment failed for %r — %s",
                     fault_type,
                     exc,
                 )
