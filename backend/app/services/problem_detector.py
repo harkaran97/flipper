@@ -344,6 +344,12 @@ async def detect_problems(
         detected_fault_ids,
     )
 
+    # 5c. Update Vehicle trim if AI returned one and it is not already set
+    ai_trim = ai_result.get("trim")
+    if vehicle is not None and ai_trim and not vehicle.trim:
+        vehicle.trim = ai_trim
+        logger.info("[DETECTOR] Step 5c: Vehicle trim set to %r from AI", ai_trim)
+
     # 6. Store exterior condition
     logger.info("[DETECTOR] Step 6: Saving exterior condition")
     exterior = ai_result.get("exterior", {})

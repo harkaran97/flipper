@@ -57,6 +57,18 @@ Assess across ALL these dimensions:
 5. VAGUENESS SIGNALS: Does the listing use phrases like "sold as seen", "needs TLC",
    "ran when parked", "project car" without specifying what's wrong?
 
+6. TRIM LEVEL: Extract the vehicle trim level from the title and description.
+   Common UK trim examples (not exhaustive — use judgment):
+   - VW/Audi/Skoda/SEAT: GTI, GTD, GTE, R, R-Line, S-Line, TDI, TSI, TFSI, Quattro, 4Motion
+   - BMW: M Sport, SE, Sport, Luxury, xDrive, sDrive, M3, M4, M5, M140i, M240i
+   - Mercedes: AMG, AMG-Line, Avantgarde, Elegance, SE, Sport, BlueTEC, CDI
+   - Ford: ST, RS, ST-Line, Titanium, Zetec, EcoBoost, EcoBlue, Vignale, Active
+   - Vauxhall: VXR, SRi, GSi, Elite, Design, Tech Line, CDTi
+   - Nissan/Toyota/Honda: Tekna, Acenta, N-Tec, Excel, Icon, GR Sport, SR, SR+
+   - General: Sport, SE, SR, Limited, Executive, Premium, Elite, Active, Plus, Pro
+   If the trim is embedded in the model name (e.g. "320d", "A3 TDI"), extract just the trim suffix.
+   Return null if no trim is identifiable.
+
 Return ONLY valid JSON, no other text:
 {{
   "write_off_category": "clean|cat_n|cat_s|cat_a|cat_b|flood|fire|unknown_writeoff",
@@ -82,7 +94,8 @@ Return ONLY valid JSON, no other text:
   }},
   "driveable": true|false|null,
   "vagueness_signals": ["<phrase_1>", "<phrase_2>"],
-  "overall_confidence": 0.0-1.0
+  "overall_confidence": 0.0-1.0,
+  "trim": "<trim_level or null>"
 }}
 
 Rules:
@@ -118,6 +131,7 @@ STUB_AI_RESPONSE = {
     "driveable": True,
     "vagueness_signals": [],
     "overall_confidence": 0.8,
+    "trim": None,
 }
 
 

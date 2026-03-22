@@ -117,13 +117,16 @@ async def _get_linkup_data(
     write_off_category: WriteOffCategory,
     write_off_label: str,
     listing_id: uuid.UUID,
+    fuel_type: str | None = None,
+    trim: str | None = None,
+    engine_cc: int | None = None,
 ) -> dict | None:
     """
     Returns LinkUp market value data, using cache when valid (created_at + ttl_days > now).
     On cache miss: calls LinkUp, stores result, returns data.
     Returns None if no valid data available.
     """
-    cache_key = f"{make}_{model}_{year}_{write_off_category.value}".lower()
+    cache_key = f"{make}_{model}_{year}_{trim}_{fuel_type}_{engine_cc}_{write_off_category.value}".lower()
 
     result = await session.execute(
         select(LinkupMarketValueCache).where(LinkupMarketValueCache.cache_key == cache_key)
@@ -150,6 +153,9 @@ async def _get_linkup_data(
             model=model,
             year=year,
             write_off_label=write_off_label,
+            fuel_type=fuel_type,
+            trim=trim,
+            engine_cc=engine_cc,
         )
         data = fallback_result.structured_data or {}
         median_gbp = float(data.get("median_sold_price_gbp") or 0)
@@ -212,6 +218,9 @@ async def estimate_market_value(
     make = vehicle.make if vehicle else "Unknown"
     model = vehicle.model if vehicle else "Unknown"
     year = vehicle.year if vehicle else 0
+    fuel_type = vehicle.fuel_type if vehicle else None
+    trim = vehicle.trim if vehicle else None
+    engine_cc = vehicle.engine_cc if vehicle else None
 
     # Load exterior_condition for write_off_category
     result = await session.execute(
@@ -254,6 +263,9 @@ async def estimate_market_value(
         write_off_category=write_off_category,
         write_off_label=write_off_label,
         listing_id=listing_id,
+        fuel_type=fuel_type,
+        trim=trim,
+        engine_cc=engine_cc,
     )
 
     if linkup_data:

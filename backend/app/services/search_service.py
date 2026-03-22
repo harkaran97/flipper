@@ -26,6 +26,9 @@ async def search_market_value(
     model: str,
     year: int,
     write_off_label: str,
+    fuel_type: str | None = None,
+    trim: str | None = None,
+    engine_cc: int | None = None,
 ) -> SearchResult:
     """
     Fallback market value search via LinkUp.
@@ -41,7 +44,15 @@ async def search_market_value(
         return await LinkUpStubAdapter().web_search(query)
 
     logger.info("Searching market value fallback (live): %s %s %d %s", make, model, year, write_off_label)
-    return await linkup_search.search_market_value(make, model, year, write_off_label)
+    return await linkup_search.search_market_value(
+        make=make,
+        model=model,
+        year=year,
+        write_off_label=write_off_label,
+        fuel_type=fuel_type,
+        trim=trim,
+        engine_cc=engine_cc,
+    )
 
 
 async def search_parts_price(
