@@ -26,6 +26,7 @@
         }
       ]
     ],
+    "jsEngine": "hermes",
     "scheme": "flipper",
     "extra": {
       "eas": {
