@@ -2,12 +2,15 @@
 problem_detector.py
 
 Orchestrates problem detection for a listing.
-Cache-first: checks cars_common_problems before calling AI.
+Cache-first: checks fault_cache before calling AI, then checks
+cars_common_problems for known faults.
 Calls ai_service for novel faults.
 Calls search_service (LinkUp) only for confirmed novel fault+car combos.
 """
+import json
 import logging
 import uuid
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +22,7 @@ from app.models.cars_common_problems import CarsCommonProblem
 from app.models.common_problem import CommonProblem
 from app.models.enums import CommonProblemSource, FaultSource, WriteOffCategory
 from app.models.exterior_condition import ExteriorCondition
-from app.models.fault import DetectedFault
+from app.models.fault import DetectedFault, FaultCache
 from app.models.listing import Listing
 from app.models.vehicle import Vehicle
 from app.services.ai_service import detect_problems_ai
@@ -177,6 +180,81 @@ async def enrich_novel_fault(
     }
 
 
+def _year_band(year: int) -> int:
+    """Returns 5-year band start (e.g., 2019 → 2015, 2023 → 2020)."""
+    return (year // 5) * 5
+
+
+def _full_ai_cache_key(make: str, model: str, year: int) -> str:
+    """Cache key for a full AI detection response: {make}_{model}_{year_band}."""
+    band = _year_band(year)
+    return f"{make.lower()}_{model.lower()}_{band}"
+
+
+def _is_cache_valid(entry: FaultCache) -> bool:
+    """Returns True if the cache entry is within its TTL."""
+    expires_at = entry.created_at + timedelta(days=entry.ttl_days)
+    return datetime.utcnow() < expires_at
+
+
+async def _read_fault_cache(
+    session: AsyncSession, cache_key: str
+) -> dict | None:
+    """
+    Checks fault_cache for a full AI result stored under cache_key.
+    Returns the parsed dict if found and TTL is valid, otherwise None.
+    """
+    result = await session.execute(
+        select(FaultCache).where(FaultCache.cache_key == cache_key)
+    )
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        return None
+    if not _is_cache_valid(entry):
+        logger.info(
+            "[DETECTOR] fault_cache EXPIRED for key=%r (created=%s ttl=%dd)",
+            cache_key, entry.created_at, entry.ttl_days,
+        )
+        return None
+    if not entry.repair_notes:
+        return None
+    try:
+        return json.loads(entry.repair_notes)
+    except json.JSONDecodeError:
+        logger.warning(
+            "[DETECTOR] fault_cache entry for key=%r has invalid JSON — ignoring",
+            cache_key,
+        )
+        return None
+
+
+async def _write_fault_cache(
+    session: AsyncSession, cache_key: str, ai_result: dict
+) -> None:
+    """
+    Upserts a full AI detection result into fault_cache under cache_key.
+    Resets created_at on update so the TTL window slides forward.
+    """
+    result = await session.execute(
+        select(FaultCache).where(FaultCache.cache_key == cache_key)
+    )
+    entry = result.scalar_one_or_none()
+    ai_json = json.dumps(ai_result)
+    if entry is not None:
+        entry.repair_notes = ai_json
+        entry.created_at = datetime.utcnow()
+        logger.info("[DETECTOR] fault_cache UPDATED for key=%r", cache_key)
+    else:
+        session.add(FaultCache(
+            cache_key=cache_key,
+            repair_min_pence=0,
+            repair_max_pence=0,
+            repair_notes=ai_json,
+        ))
+        logger.info("[DETECTOR] fault_cache CREATED for key=%r", cache_key)
+    await session.flush()
+
+
 async def detect_problems(
     session: AsyncSession,
     listing_id: uuid.UUID,
@@ -186,8 +264,9 @@ async def detect_problems(
     Full problem detection pipeline for one listing.
     1. Load listing + vehicle data
     2. Check write-off keywords first (fast, no AI)
-    3. Check cars_common_problems for known faults (no AI needed for known combos)
-    4. Run AI detection for novel fault identification and condition assessment
+    3. Check cars_common_problems for known faults
+    3b. Check fault_cache for a full cached AI result — skip AI entirely on hit
+    4. Run AI detection (only if cache miss) and write result to fault_cache
     5. For novel fault+car combos not in cars_common_problems:
        - trigger LinkUp search (via search_service)
        - update cars_common_problems with new intelligence
@@ -270,30 +349,66 @@ async def detect_problems(
         }
         logger.info("[DETECTOR] Step 3 OK: Known fault types = %s", known_fault_types)
 
-    # 4. Run AI detection
-    logger.info(
-        "[DETECTOR] Step 4: Calling AI — make=%s model=%s year=%d known_faults=%d",
-        make, model, year, len(known_problems),
-    )
-    ai_result = await detect_problems_ai(
-        make=make,
-        model=model,
-        year=year,
-        fuel_type=fuel_type,
-        engine_code=engine_code,
-        title=listing.title,
-        description=listing.description or "",
-        known_fault_count=len(known_problems),
-        has_unknown_faults=False,  # Will be determined after first pass
-    )
-    logger.info(
-        "[DETECTOR] Step 4 OK: AI returned %d mechanical_fault(s), write_off=%s, "
-        "driveable=%s, overall_confidence=%s",
-        len(ai_result.get("mechanical_faults", [])),
-        ai_result.get("write_off_category"),
-        ai_result.get("driveable"),
-        ai_result.get("overall_confidence"),
-    )
+    # 3b. Check fault_cache for a previously cached full AI result
+    ai_result = None
+    cache_key = _full_ai_cache_key(make, model, year)
+    if make != "Unknown":
+        logger.info(
+            "[DETECTOR] Step 3b: Checking fault_cache — key=%r", cache_key,
+        )
+        ai_result = await _read_fault_cache(session, cache_key)
+        if ai_result is not None:
+            logger.info(
+                "[DETECTOR] Step 3b HIT: fault_cache returned %d fault(s) for key=%r — skipping AI call",
+                len(ai_result.get("mechanical_faults", [])), cache_key,
+            )
+        else:
+            logger.info(
+                "[DETECTOR] Step 3b MISS: No valid fault_cache entry for key=%r — will call AI",
+                cache_key,
+            )
+    else:
+        logger.info("[DETECTOR] Step 3b: Skipping fault_cache check — make is Unknown")
+
+    # 4. Run AI detection (only on cache miss)
+    if ai_result is None:
+        logger.info(
+            "[DETECTOR] Step 4: Calling AI — make=%s model=%s year=%d known_faults=%d",
+            make, model, year, len(known_problems),
+        )
+        ai_result = await detect_problems_ai(
+            make=make,
+            model=model,
+            year=year,
+            fuel_type=fuel_type,
+            engine_code=engine_code,
+            title=listing.title,
+            description=listing.description or "",
+            known_fault_count=len(known_problems),
+            has_unknown_faults=False,  # Will be determined after first pass
+        )
+        logger.info(
+            "[DETECTOR] Step 4 OK: AI returned %d mechanical_fault(s), write_off=%s, "
+            "driveable=%s, overall_confidence=%s",
+            len(ai_result.get("mechanical_faults", [])),
+            ai_result.get("write_off_category"),
+            ai_result.get("driveable"),
+            ai_result.get("overall_confidence"),
+        )
+
+        # 4b. Write successful AI result to fault_cache for future reuse
+        if make != "Unknown":
+            logger.info("[DETECTOR] Step 4b: Writing AI result to fault_cache key=%r", cache_key)
+            try:
+                await _write_fault_cache(session, cache_key, ai_result)
+                logger.info("[DETECTOR] Step 4b OK: fault_cache written for key=%r", cache_key)
+            except Exception as exc:
+                logger.warning(
+                    "[DETECTOR] Step 4b WARN: Could not write to fault_cache for key=%r — %s",
+                    cache_key, exc,
+                )
+    else:
+        logger.info("[DETECTOR] Step 4: Skipped AI call — served from fault_cache key=%r", cache_key)
 
     # 5. Process AI results — store detected faults
     logger.info("[DETECTOR] Step 5: Saving detected faults to DB")
