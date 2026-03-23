@@ -353,28 +353,45 @@ async def estimate_market_value(
         linkup_data = None
 
     linkup_sample_count = None
+    linkup_low_pence = None
+    linkup_high_pence = None
     if linkup_data:
         median_pence = int(linkup_data["median_sold_price_gbp"] * 100)
-        low_pence = int(linkup_data["price_range_low_gbp"] * 100)
-        high_pence = int(linkup_data["price_range_high_gbp"] * 100)
+        linkup_low_pence = int(linkup_data["price_range_low_gbp"] * 100)
+        linkup_high_pence = int(linkup_data["price_range_high_gbp"] * 100)
         linkup_sample_count = linkup_data.get("sample_count")
         if median_pence > 0:
-            prices.extend([low_pence, median_pence, high_pence])
+            prices.append(median_pence)  # Only the median — not low/high
             linkup_fallback_used = True
             if not sold_comps:
                 source = MarketValueSource.LINKUP_FALLBACK.value
 
     # 5. Calculate median, low, high
+    # eBay-only prices for range anchoring
+    ebay_prices = [comp.sold_price_pence for comp in sold_comps
+                   if comp.sold_price_pence > 0]
+
     if prices:
         median_value = calculate_median(prices)
-        low_value = min(prices)
-        high_value = max(prices)
     else:
         logger.warning(
-            "[VALUATION] No valid prices from %d eBay comps for listing %s — emitting zero estimate",
+            "[VALUATION] No valid prices from %d eBay comps for listing %s "
+            "— emitting zero estimate",
             len(sold_comps), listing_id,
         )
         median_value = 0
+
+    # Range: use the full spread of all evidence sources
+    if ebay_prices and linkup_low_pence and linkup_high_pence:
+        low_value = min(min(ebay_prices), linkup_low_pence)
+        high_value = max(max(ebay_prices), linkup_high_pence)
+    elif ebay_prices:
+        low_value = min(ebay_prices)
+        high_value = max(ebay_prices)
+    elif linkup_low_pence and linkup_high_pence:
+        low_value = linkup_low_pence
+        high_value = linkup_high_pence
+    else:
         low_value = 0
         high_value = 0
 
