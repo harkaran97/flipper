@@ -6,8 +6,6 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     ebay_app_id: str = ""
     ebay_cert_id: str = ""
-    ebay_client_id: str = ""
-    ebay_client_secret: str = ""
     linkup_api_key: str = ""
     ebay_stub: bool = True
     linkup_stub: bool = True
