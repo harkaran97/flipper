@@ -21,6 +21,7 @@ class Listing(Base):
     postcode: Mapped[str] = mapped_column(String(10), nullable=True)
     url: Mapped[str] = mapped_column(Text, nullable=False)
     raw_json: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    recent_work_json: Mapped[list] = mapped_column(JSONB, nullable=True)
     processed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
 

@@ -16,10 +16,23 @@ def build_linkup_query(
     fuel_type: str,
     write_off: str,
 ) -> str:
+    clean_make = make.strip() if make and make.lower() != "unknown" else None
+    clean_model = model.strip() if model and model.lower() != "unknown" else None
+
+    name_parts = []
+    if clean_make:
+        name_parts.append(clean_make)
+    if clean_model:
+        make_lower = clean_make.lower() if clean_make else ""
+        model_lower = clean_model.lower()
+        if not make_lower or (not model_lower.startswith(make_lower) and make_lower not in model_lower):
+            name_parts.append(clean_model)
+        elif clean_make:
+            name_parts[-1] = clean_model
+
     vehicle_parts = [p for p in [
         str(year) if year and year > 2000 else None,
-        make if make and make.lower() != "unknown" else None,
-        model if model and model.lower() != "unknown" else None,
+        " ".join(name_parts) if name_parts else None,
         trim if trim and trim.lower() not in ("unknown", "none") else None,
         fuel_type if fuel_type else None,
     ] if p]

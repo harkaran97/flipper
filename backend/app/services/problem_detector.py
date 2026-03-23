@@ -383,6 +383,11 @@ async def detect_problems(
         detected_fault_ids,
     )
 
+    # 5c. Store recent_work on listing
+    recent_work = ai_result.get("recent_work", [])
+    if recent_work:
+        listing.recent_work_json = recent_work
+        logger.info("[DETECTOR] Step 5c: Stored %d recent_work item(s) on listing", len(recent_work))
     # 5c. Record outcomes for Bayesian training dataset
     ai_overall_confidence = ai_result.get("overall_confidence")
     for fault in ai_result.get("mechanical_faults", []):

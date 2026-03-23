@@ -105,13 +105,27 @@ def build_vehicle_query(make: str, model: str, year: int, trim: str = None) -> s
     """
     Builds a clean vehicle query string, omitting fields that have no real value.
     Excludes 'Unknown' make/model/trim and year=0 or implausible years (<= 2000).
+    Deduplicates make from query when model already contains the make name
+    (e.g. make=Range Rover, model=Range Rover Sport → "Range Rover Sport", not
+    "Range Rover Range Rover Sport").
     Returns empty string if both make and model are unknown.
     """
     parts = []
-    if make and make.lower() != "unknown":
-        parts.append(make)
-    if model and model.lower() != "unknown":
-        parts.append(model)
+    clean_make = make.strip() if make and make.lower() != "unknown" else None
+    clean_model = model.strip() if model and model.lower() != "unknown" else None
+
+    if clean_make:
+        parts.append(clean_make)
+
+    if clean_model:
+        make_lower = clean_make.lower() if clean_make else ""
+        model_lower = clean_model.lower()
+        if not make_lower or (not model_lower.startswith(make_lower) and make_lower not in model_lower):
+            parts.append(clean_model)
+        elif clean_make:
+            # Model contains make — use model only (it's more specific)
+            parts[-1] = clean_model
+
     if trim and trim.lower() not in ("unknown", "none"):
         parts.append(trim)
     if year and year > 2000:
