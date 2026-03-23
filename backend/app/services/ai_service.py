@@ -11,11 +11,31 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-PROBLEM_DETECTION_PROMPT = """You are an expert UK automotive mechanic and car assessor
-with 20 years experience buying and selling used cars at auction and privately.
+PROBLEM_DETECTION_PROMPT = """You are an expert UK vehicle mechanic and car flipper analyst.
 
-You are assessing a vehicle listing to identify ALL likely faults and issues.
-Be thorough. UK sellers often use slang and colloquial terms.
+VEHICLE DETAILS (from eBay structured data):
+Make: {make}
+Model: {model}
+Year: {year}
+Engine: {engine_display}
+Transmission: {transmission}
+Mileage: {mileage_display}
+Body type: {body_type}
+
+LISTING:
+Title: {title}
+Price: \u00a3{price_display}
+Description: {description}
+
+FIELDS REQUIRING AI INFERENCE (not available from eBay structured data):
+{missing_fields_display}
+
+Your tasks:
+1. Infer any missing vehicle fields listed above from the title and description
+2. Identify ALL mechanical faults mentioned or implied
+3. Assess write-off status
+4. Assess driveability
+5. Extract trim level if identifiable
 
 Common UK terms to recognise:
 - "mayo/mayonnaise under cap" = coolant in oil = head gasket failure
@@ -35,15 +55,10 @@ Common UK terms to recognise:
 - "barn find/been sitting" = unknown condition after storage
 - "sold as seen" = seller disclaiming responsibility
 
-Vehicle: {make} {model} {year} {fuel_type}
-{engine_code_line}
-Listing title: {title}
-Listing description: {description}
-
 Assess across ALL these dimensions:
 
 1. WRITE-OFF STATUS: Is there any mention of Cat A, B, S, N, C, D, write-off,
-   salvage, insurance claim, flood, fire? Map old Cat C → cat_s, Cat D → cat_n.
+   salvage, insurance claim, flood, fire? Map old Cat C \u2192 cat_s, Cat D \u2192 cat_n.
 
 2. MECHANICAL FAULTS: For each subsystem, identify any mentioned or implied faults:
    powertrain, transmission, cooling, electrical, brakes, suspension/steering,
@@ -58,7 +73,7 @@ Assess across ALL these dimensions:
    "ran when parked", "project car" without specifying what's wrong?
 
 6. TRIM LEVEL: Extract the vehicle trim level from the title and description.
-   Common UK trim examples (not exhaustive — use judgment):
+   Common UK trim examples (not exhaustive -- use judgment):
    - VW/Audi/Skoda/SEAT: GTI, GTD, GTE, R, R-Line, S-Line, TDI, TSI, TFSI, Quattro, 4Motion
    - BMW: M Sport, SE, Sport, Luxury, xDrive, sDrive, M3, M4, M5, M140i, M240i
    - Mercedes: AMG, AMG-Line, Avantgarde, Elegance, SE, Sport, BlueTEC, CDI
@@ -69,7 +84,11 @@ Assess across ALL these dimensions:
    If the trim is embedded in the model name (e.g. "320d", "A3 TDI"), extract just the trim suffix.
    Return null if no trim is identifiable.
 
-If the listing description is empty or missing, base your analysis solely on the title text provided. Always return valid JSON — never refuse or ask for more information.
+Fields already provided as VEHICLE DETAILS above were obtained from eBay structured
+data and should be treated as facts -- do not second-guess them.
+Only infer fields explicitly listed under FIELDS REQUIRING AI INFERENCE.
+
+If the listing description is empty or missing, base your analysis solely on the title text provided. Always return valid JSON -- never refuse or ask for more information.
 
 Return ONLY valid JSON, no other text:
 {{
@@ -101,7 +120,7 @@ Return ONLY valid JSON, no other text:
 }}
 
 Rules:
-- Never guess fault_type — only include faults with evidence from the listing
+- Never guess fault_type -- only include faults with evidence from the listing
 - Use normalised fault type names matching the common_problems table
 - overall_confidence reflects how much useful signal the listing contains,
   not how good an opportunity it is (that is determined later in TASK_006)
@@ -147,6 +166,11 @@ async def detect_problems_ai(
     description: str,
     known_fault_count: int = 0,
     has_unknown_faults: bool = False,
+    transmission: str | None = None,
+    mileage: int | None = None,
+    body_type: str | None = None,
+    price_pence: int = 0,
+    missing_fields: list[str] | None = None,
 ) -> dict:
     """
     Calls the AI to detect problems from a listing.
@@ -174,16 +198,34 @@ async def detect_problems_ai(
         return STUB_AI_RESPONSE
 
     model_id = "claude-haiku-4-5"
-    engine_code_line = f"Engine code: {engine_code}" if engine_code else ""
+
+    # Build engine display: "{engine_cc}cc {fuel_type}" or "Unknown"
+    if engine_code and str(engine_code).lstrip("-").isdigit():
+        engine_display = f"{engine_code}cc {fuel_type or ''}".strip()
+    else:
+        engine_display = f"{engine_code or 'Unknown'} {fuel_type or ''}".strip()
+
+    mileage_display = f"{mileage:,}" if mileage else "Unknown"
+    price_display = f"{price_pence / 100:.0f}" if price_pence else "Unknown"
+
+    missing = missing_fields or []
+    missing_fields_display = (
+        ", ".join(missing) if missing
+        else "none — all fields obtained from eBay structured data"
+    )
 
     prompt = PROBLEM_DETECTION_PROMPT.format(
         make=make,
         model=model,
-        year=year,
-        fuel_type=fuel_type or "unknown",
-        engine_code_line=engine_code_line,
+        year=year or "Unknown",
+        engine_display=engine_display,
+        transmission=transmission or "Unknown",
+        mileage_display=mileage_display,
+        body_type=body_type or "Unknown",
         title=title,
-        description=description,
+        price_display=price_display,
+        description=description or "No description provided.",
+        missing_fields_display=missing_fields_display,
     )
 
     logger.info(
