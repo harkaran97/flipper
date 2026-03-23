@@ -48,12 +48,23 @@ class PartsPricingService:
             self.gsf_adapter = stub
             self.carparts4less_adapter = stub
             self.carparts_adapter = stub
+            logger.info("[PARTS] Running in STUB mode — all adapters returning fake data")
         else:
             self.ebay_adapter = EbayPartsAdapter()
             self.autodoc_adapter = AutodocAdapter()
             self.gsf_adapter = GSFAdapter()
             self.carparts4less_adapter = CarParts4LessAdapter()
             self.carparts_adapter = CarPartsAdapter()
+
+            active = ["eBay"] if settings.ebay_parts_live else []
+            inactive = ["Autodoc", "GSF", "CarParts4Less", "car-parts.co.uk"]
+            # Any with VALIDATED=True move to active
+            logger.info(
+                "[PARTS] Live mode — active adapters: %s | "
+                "stubbed/unvalidated: %s",
+                active or "none yet",
+                inactive,
+            )
 
         self._ttl_hours: int = settings.parts_cache_ttl_hours
 

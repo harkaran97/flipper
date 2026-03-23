@@ -5,7 +5,7 @@ eBay Parts adapter for the multi-source parts pricing service.
 Uses the eBay Browse API, category 33743 (Car Parts & Accessories).
 Filters to UK location and delivery only.
 
-Uses stub when EBAY_STUB=true.
+Uses stub when PARTS_STUB=true OR EBAY_PARTS_LIVE=false.
 """
 import logging
 
@@ -42,10 +42,9 @@ class EbayPartsAdapter(BasePartsSupplierAdapter):
         model: str,
         year: int,
     ) -> list[PartResult]:
-        if settings.ebay_stub:
+        if settings.parts_stub or not settings.ebay_parts_live:
             stub = StubPartsAdapter()
             return await stub.search(part_name, make, model, year)
-
         try:
             return await self._live_search(part_name, make, model, year)
         except Exception as exc:
@@ -62,17 +61,30 @@ class EbayPartsAdapter(BasePartsSupplierAdapter):
         from app.adapters.ebay.client import EbayClient
         client = EbayClient()
 
-        query = f"{make} {model} {year} {part_name}"
+        query = f"{part_name} {make} {model}"
+
+        # Primary: new parts only
         params = {
             "q": query,
             "category_ids": EBAY_PARTS_CATEGORY,
-            "filter": "itemLocationCountry:GB,deliveryCountry:GB",
+            "filter": "itemLocationCountry:GB,deliveryCountry:GB,conditionIds:{1000}",
             "sort": "price",
             "limit": "10",
         }
-
         data = await client.get("/item_summary/search", params)
         items = data.get("itemSummaries", [])
+
+        # Fallback: any condition if new-only returns nothing
+        if not items:
+            params_fallback = {
+                "q": query,
+                "category_ids": EBAY_PARTS_CATEGORY,
+                "filter": "itemLocationCountry:GB,deliveryCountry:GB",
+                "sort": "price",
+                "limit": "10",
+            }
+            data = await client.get("/item_summary/search", params_fallback)
+            items = data.get("itemSummaries", [])
 
         results = []
         for item in items[:10]:

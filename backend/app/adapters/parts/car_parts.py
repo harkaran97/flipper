@@ -41,6 +41,9 @@ class CarPartsAdapter(BasePartsSupplierAdapter):
     Falls back to empty list on any error or timeout.
     """
 
+    # Not yet validated against live site HTML — returns empty until verified
+    VALIDATED = False
+
     async def search(
         self,
         part_name: str,
@@ -48,6 +51,11 @@ class CarPartsAdapter(BasePartsSupplierAdapter):
         model: str,
         year: int,
     ) -> list[PartResult]:
+        if not self.VALIDATED:
+            logger.debug(
+                "CarPartsAdapter not yet validated — skipping (returning empty)"
+            )
+            return []
         try:
             return await self._scrape(part_name, make, model, year)
         except Exception as exc:

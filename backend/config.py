@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     ebay_max_distance_miles: int = 50  # Max distance from user_postcode for eBay listings
 
     # Parts pricing service
-    parts_stub: bool = True          # Set false when scrapers are verified in production
+    parts_stub: bool = True           # master override — True forces ALL adapters to stub
+    ebay_parts_live: bool = False     # when True AND parts_stub=False, eBay parts runs live
     user_postcode: str = "LE4 8JF"  # Default postcode for delivery calculation
     parts_cache_ttl_hours: int = 24  # How long to cache parts pricing results
     scraper_timeout_seconds: int = 5  # Per-adapter HTTP timeout

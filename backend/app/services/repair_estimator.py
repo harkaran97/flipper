@@ -178,8 +178,23 @@ async def estimate_repairs(
             parts = result.scalars().all()
 
             if not parts:
-                logger.info("No parts defined for fault '%s' — marking as unpriced", fault_type)
-                unpriced_fault_types.append(fault_type)
+                # No parts defined for this fault type — check cars_common_problems
+                # for a pre-seeded aggregate cost range before marking unpriced
+                seeded_cost = await _get_seeded_cost(session, fault_type, vehicle)
+                if seeded_cost:
+                    total_parts_min += seeded_cost["min_pence"]
+                    total_parts_max += seeded_cost["max_pence"]
+                    logger.info(
+                        "[ESTIMATOR] Using seeded cost for fault '%s': £%d–£%d",
+                        fault_type,
+                        seeded_cost["min_pence"] // 100,
+                        seeded_cost["max_pence"] // 100,
+                    )
+                else:
+                    logger.info(
+                        "No parts defined for fault '%s' — marking as unpriced", fault_type
+                    )
+                    unpriced_fault_types.append(fault_type)
             elif listing.price_pence <= _PRICE_CEILING_PENCE:
                 # Search prices for each part via the multi-source service
                 fault_cheapest_sum = 0
@@ -327,3 +342,34 @@ async def _resolve_car_id(
     )
     car = result.scalars().first()
     return car.id if car else None
+
+
+async def _get_seeded_cost(
+    session: AsyncSession,
+    fault_type: str,
+    vehicle: Vehicle,
+) -> dict | None:
+    """
+    Returns pre-seeded repair cost range from cars_common_problems
+    for this fault+vehicle combination.
+    Returns None if no seeded data exists.
+    """
+    result = await session.execute(
+        select(CarsCommonProblem)
+        .join(Car, CarsCommonProblem.car_id == Car.id)
+        .join(CommonProblem, CarsCommonProblem.problem_id == CommonProblem.id)
+        .where(
+            Car.make == vehicle.make,
+            Car.model == vehicle.model,
+            Car.year_from <= vehicle.year,
+            Car.year_to >= vehicle.year,
+            CommonProblem.fault_type == fault_type,
+        )
+    )
+    ccp = result.scalar_one_or_none()
+    if ccp is None:
+        return None
+    return {
+        "min_pence": ccp.repair_parts_min_pence,
+        "max_pence": ccp.repair_parts_max_pence,
+    }
