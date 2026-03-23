@@ -80,6 +80,7 @@ def classify_opportunity(
     vagueness_signals: list,
     listing_price_pence: int,
     market_value_pence: int,
+    comp_count: int = 0,
 ) -> OpportunityClass:
     """
     Canonical opportunity classification.
@@ -89,15 +90,22 @@ def classify_opportunity(
     if write_off_category in ("cat_a", "cat_b"):
         return OpportunityClass.EXCLUDE
 
+    # Insufficient market value data — valuation unreliable
+    if (
+        market_value_pence == 0
+        or comp_count == 0
+        or (market_value_confidence == "low" and comp_count < 3)
+    ):
+        return OpportunityClass.EXCLUDE
+
     if true_profit_pence < 0:
         return OpportunityClass.EXCLUDE
 
     if true_margin_pct < 5.0:
         return OpportunityClass.EXCLUDE
 
-    # 2. Worth a look — vague listings where margin is unknown
-    # Market value is 0 or confidence is LOW with unpriced faults
-    if market_value_pence == 0 or (
+    # 2. Worth a look — vague listings with low confidence + unpriced faults
+    if (
         market_value_confidence == "low"
         and has_unpriced_faults
         and len(vagueness_signals) >= 2
@@ -283,7 +291,17 @@ async def score_opportunity(
         vagueness_signals=vagueness_signals,
         listing_price_pence=listing.price_pence,
         market_value_pence=market_value.median_value_pence,
+        comp_count=market_value.comp_count,
     )
+    if opportunity_class == OpportunityClass.EXCLUDE and (
+        market_value.median_value_pence == 0
+        or market_value.comp_count == 0
+        or (market_value.confidence == "low" and market_value.comp_count < 3)
+    ):
+        logger.warning(
+            "[SCORER] Excluding listing %s — insufficient market value data (comps=%d, confidence=%s)",
+            listing_id, market_value.comp_count, market_value.confidence,
+        )
 
     # Risk calculation
     risk_level = calculate_risk(

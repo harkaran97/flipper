@@ -87,6 +87,24 @@ def get_confidence(comp_count: int) -> MarketValueConfidence:
         return MarketValueConfidence.LOW
 
 
+def build_vehicle_query(make: str, model: str, year: int, trim: str = None) -> str:
+    """
+    Builds a clean vehicle query string, omitting fields that have no real value.
+    Excludes 'Unknown' make/model/trim and year=0 or implausible years (<= 2000).
+    Returns empty string if both make and model are unknown.
+    """
+    parts = []
+    if make and make.lower() != "unknown":
+        parts.append(make)
+    if model and model.lower() != "unknown":
+        parts.append(model)
+    if trim and trim.lower() not in ("unknown", "none"):
+        parts.append(trim)
+    if year and year > 2000:
+        parts.append(str(year))
+    return " ".join(parts)
+
+
 def build_comp_search_query(
     make: str,
     model: str,
@@ -96,8 +114,11 @@ def build_comp_search_query(
     """
     Builds eBay search query string ensuring like-for-like comps.
     Write-off category is injected into the query so results are comparable.
+    Returns empty string if vehicle data is insufficient (both make and model unknown).
     """
-    base = f"{make} {model} {year}"
+    base = build_vehicle_query(make, model, year)
+    if not base:
+        return ""
     category_terms = {
         WriteOffCategory.CLEAN: base,
         WriteOffCategory.CAT_N: f"{base} cat n",
@@ -235,11 +256,19 @@ async def estimate_market_value(
         write_off_category = WriteOffCategory.CLEAN
 
     # 2. Build like-for-like comp query
+    vehicle_query = build_vehicle_query(make, model, year)
+    if not vehicle_query:
+        logger.warning(
+            "[VALUATION] Skipping market value — insufficient vehicle data for listing %s",
+            listing_id,
+        )
+        return
+
     comp_query = build_comp_search_query(make, model, year, write_off_category)
     write_off_label = WRITE_OFF_LABELS.get(write_off_category, "")
     logger.info(
-        "Market value search for listing %s: query=%r, write_off=%s",
-        listing_id, comp_query, write_off_category.value,
+        "Market value search: query=%r, write_off=%s, listing=%s",
+        comp_query, write_off_category.value, listing_id,
     )
 
     # 3. Fetch eBay sold comps
