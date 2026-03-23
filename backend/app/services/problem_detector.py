@@ -371,11 +371,17 @@ async def detect_problems(
         detected_fault_ids,
     )
 
-    # 5c. Update Vehicle trim if AI returned one and it is not already set
+    # 5c. Store recent_work on listing
+    recent_work = ai_result.get("recent_work", [])
+    if recent_work:
+        listing.recent_work_json = recent_work
+        logger.info("[DETECTOR] Step 5c: Stored %d recent_work item(s) on listing", len(recent_work))
+
+    # 5d. Update Vehicle trim if AI returned one and it is not already set
     ai_trim = ai_result.get("trim")
     if vehicle is not None and ai_trim and not vehicle.trim:
         vehicle.trim = ai_trim
-        logger.info("[DETECTOR] Step 5c: Vehicle trim set to %r from AI", ai_trim)
+        logger.info("[DETECTOR] Step 5d: Vehicle trim set to %r from AI", ai_trim)
 
     # 6. Store exterior condition
     logger.info("[DETECTOR] Step 6: Saving exterior condition")

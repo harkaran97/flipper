@@ -32,10 +32,17 @@ FIELDS REQUIRING AI INFERENCE (not available from eBay structured data):
 
 Your tasks:
 1. Infer any missing vehicle fields listed above from the title and description
-2. Identify ALL mechanical faults mentioned or implied
-3. Assess write-off status
-4. Assess driveability
-5. Extract trim level if identifiable
+2. Identify ALL mechanical faults that need fixing — things that are broken,
+   worn, or faulty RIGHT NOW
+3. Identify recent work — maintenance or repairs the seller states have ALREADY
+   BEEN COMPLETED (e.g. "timing belt just replaced", "new clutch fitted",
+   "head gasket done"). These are positive signals, not faults.
+4. Assess write-off status
+5. Assess driveability
+6. Extract trim level if identifiable
+
+IMPORTANT: Do not put completed maintenance work in mechanical_faults.
+A recently replaced timing belt is NOT a fault — it reduces buyer cost.
 
 Common UK terms to recognise:
 - "mayo/mayonnaise under cap" = coolant in oil = head gasket failure
@@ -101,6 +108,12 @@ Return ONLY valid JSON, no other text:
       "confidence": 0.0-1.0
     }}
   ],
+  "recent_work": [
+    {{
+      "description": "<what was done>",
+      "confidence": 0.0-1.0
+    }}
+  ],
   "exterior": {{
     "panel_damage_severity": "critical|high|medium|low|none",
     "panel_damage_notes": "<description>",
@@ -137,6 +150,7 @@ STUB_AI_RESPONSE = {
             "confidence": 0.85,
         }
     ],
+    "recent_work": [],
     "exterior": {
         "panel_damage_severity": "low",
         "panel_damage_notes": "Minor scuff on rear bumper",
@@ -255,8 +269,9 @@ async def detect_problems_ai(
             response_text = response_text[start:end + 1]
         parsed = json.loads(response_text)
         logger.info(
-            "[AI_SERVICE] JSON parsed OK — mechanical_faults=%d write_off=%s",
+            "[AI_SERVICE] JSON parsed OK — mechanical_faults=%d recent_work=%d write_off=%s",
             len(parsed.get("mechanical_faults", [])),
+            len(parsed.get("recent_work", [])),
             parsed.get("write_off_category"),
         )
         return parsed
