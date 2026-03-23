@@ -69,6 +69,8 @@ Assess across ALL these dimensions:
    If the trim is embedded in the model name (e.g. "320d", "A3 TDI"), extract just the trim suffix.
    Return null if no trim is identifiable.
 
+If the listing description is empty or missing, base your analysis solely on the title text provided. Always return valid JSON — never refuse or ask for more information.
+
 Return ONLY valid JSON, no other text:
 {{
   "write_off_category": "clean|cat_n|cat_s|cat_a|cat_b|flood|fire|unknown_writeoff",

@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.adapters.base import RawListing
-from app.adapters.ebay.listings import EbayListingsAdapter
+from app.adapters.ebay.listings import EbayListingsAdapter, extract_vehicle_from_item
 from app.adapters.ebay.stub import EbayStubAdapter
 from app.core.database import AsyncSessionLocal
 from app.events.bus import EventBus
@@ -101,11 +101,12 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
         session.add(listing)
         await session.flush()
 
-        # Seed a Vehicle row when the adapter provides stub vehicle data.
-        # This allows the estimation pipeline to proceed without a real
-        # enrichment step parsing the listing text.
+        # Seed a Vehicle row from stub data (stub adapter) or from eBay item
+        # specifics / title heuristics (real eBay adapter).
         stub_vehicles: dict = getattr(adapter, "STUB_VEHICLE_DATA", {})
         vehicle_data = stub_vehicles.get(raw.external_id)
+        if vehicle_data is None and raw.source == "ebay" and raw.raw_json:
+            vehicle_data = extract_vehicle_from_item(raw.raw_json)
         if vehicle_data:
             session.add(Vehicle(listing_id=listing.id, **vehicle_data))
 
