@@ -38,10 +38,10 @@ class EbayClient:
         if self._token and time.time() < self._token_expiry - 60:
             return self._token
 
-        if not settings.ebay_client_id or not settings.ebay_client_secret:
-            raise EbayAuthError("EBAY_CLIENT_ID and EBAY_CLIENT_SECRET must be set")
+        if not settings.ebay_app_id or not settings.ebay_cert_id:
+            raise EbayAuthError("EBAY_APP_ID and EBAY_CERT_ID must be set")
 
-        credentials = f"{settings.ebay_client_id}:{settings.ebay_client_secret}"
+        credentials = f"{settings.ebay_app_id}:{settings.ebay_cert_id}"
         encoded = base64.b64encode(credentials.encode()).decode()
 
         response = await self._http.post(
