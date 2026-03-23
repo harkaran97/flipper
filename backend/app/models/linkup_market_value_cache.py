@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Float, Integer, String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -25,6 +25,7 @@ class LinkupMarketValueCache(Base):
     price_range_low_gbp: Mapped[float] = mapped_column(Float, nullable=False)
     price_range_high_gbp: Mapped[float] = mapped_column(Float, nullable=False)
     sample_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    raw_response_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     ttl_days: Mapped[int] = mapped_column(Integer, default=30)
 
