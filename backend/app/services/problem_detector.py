@@ -7,6 +7,7 @@ Calls ai_service for novel faults.
 Calls search_service (LinkUp) only for confirmed novel fault+car combos.
 """
 import logging
+import re
 import uuid
 
 from sqlalchemy import select
@@ -21,10 +22,21 @@ from app.models.enums import CommonProblemSource, FaultSource, WriteOffCategory
 from app.models.exterior_condition import ExteriorCondition
 from app.models.fault import DetectedFault
 from app.models.listing import Listing
+from app.models.listing_fault_outcome import ListingFaultOutcome
 from app.models.vehicle import Vehicle
 from app.services.ai_service import detect_problems_ai
 
 logger = logging.getLogger(__name__)
+
+def normalise_fault_type(fault_type: str) -> str:
+    """Normalise fault_type to consistent snake_case for DB storage."""
+    if not fault_type:
+        return "unknown_fault"
+    normalised = fault_type.lower().strip()
+    normalised = re.sub(r'[\s\-]+', '_', normalised)
+    normalised = re.sub(r'[^a-z0-9_]', '', normalised)
+    return normalised[:100]
+
 
 WRITEOFF_KEYWORDS = {
     WriteOffCategory.CAT_A: ["cat a", "category a", "cat-a"],
@@ -317,7 +329,7 @@ async def detect_problems(
     logger.info("[DETECTOR] Step 5: Saving detected faults to DB")
     detected_fault_ids = []
     for i, fault in enumerate(ai_result.get("mechanical_faults", [])):
-        fault_type = fault.get("fault_type", "unknown")
+        fault_type = normalise_fault_type(fault.get("fault_type", "unknown"))
         severity = fault.get("severity", "medium")
         confidence = fault.get("confidence", 0.5)
 
@@ -376,6 +388,35 @@ async def detect_problems(
     if recent_work:
         listing.recent_work_json = recent_work
         logger.info("[DETECTOR] Step 5c: Stored %d recent_work item(s) on listing", len(recent_work))
+    # 5c. Record outcomes for Bayesian training dataset
+    ai_overall_confidence = ai_result.get("overall_confidence")
+    for fault in ai_result.get("mechanical_faults", []):
+        fault_type = normalise_fault_type(fault.get("fault_type", "unknown"))
+        try:
+            outcome = ListingFaultOutcome(
+                listing_id=listing_id,
+                make=vehicle.make if vehicle else None,
+                model=vehicle.model if vehicle else None,
+                year=vehicle.year if vehicle else None,
+                mileage=vehicle.mileage if vehicle else None,
+                fuel_type=vehicle.fuel_type if vehicle else None,
+                predicted_fault_type=fault_type,
+                predicted_confidence=fault.get("confidence"),
+                predicted_severity=fault.get("severity"),
+                ai_overall_confidence=ai_overall_confidence,
+            )
+            session.add(outcome)
+            logger.info(
+                "[DETECTOR] Step 5c: Outcome recorded for fault '%s' — listing=%s",
+                fault_type,
+                listing_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[DETECTOR] Step 5c WARN: Failed to record outcome for fault '%s' — %s",
+                fault_type,
+                exc,
+            )
 
     # 5d. Update Vehicle trim if AI returned one and it is not already set
     ai_trim = ai_result.get("trim")
