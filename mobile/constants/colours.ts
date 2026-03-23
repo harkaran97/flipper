@@ -1,9 +1,10 @@
 /** Design tokens for the Flipper iOS app. Linear × Shares.io design system. */
 export const colours = {
-  // Backgrounds — pure white everywhere, no grey
+  // Backgrounds
   bg: '#FFFFFF',
   bgSecondary: '#FFFFFF',
   bgCard: '#FFFFFF',
+  bgGrouped: '#F2F2F7',    // iOS system grouped background
   surface: '#FFFFFF',
   border: '#E8E8E8',
 
@@ -12,28 +13,31 @@ export const colours = {
   textSecondary: '#6B6B6B',
   textMuted: '#AAAAAA',
 
-  // Accent — profit green
-  green: '#00C853',
-  accent: '#00C853',
+  // Accent — iOS system green (#34C759)
+  green: '#34C759',
+  accent: '#34C759',
   greenLight: '#E8F5E9',
-  greenText: '#00C853',
+  greenText: '#34C759',
 
   // Opportunity class
-  strong: '#00C853',       // green
+  strong: '#34C759',       // green
   speculative: '#FFB300',  // amber
   worthALook: '#FF6D00',   // orange
   exclude: '#CCCCCC',      // never shown
 
-  // Risk
+  // Risk / severity
   riskHigh: '#FF3B30',
   riskMedium: '#FFB300',
   riskLow: '#AAAAAA',
   danger: '#FF3B30',
 
+  // Amber (for SPECULATIVE badge, high severity)
+  amber: '#FF9500',
+
   // Write-off
   catS: '#FF3B30',
   catN: '#FF6D00',
-  clean: '#00C853',
+  clean: '#34C759',
 
   // UI
   white: '#FFFFFF',

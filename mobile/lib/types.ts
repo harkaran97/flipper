@@ -35,9 +35,14 @@ export interface OpportunityCard {
 
 export interface SupplierPrice {
   supplier: string
+  supplier_logo_key: string
   price_pence: number
+  delivery_pence: number
+  total_cost_pence: number
+  condition: string
   url: string
   in_stock: boolean
+  price_confidence: string
 }
 
 export interface PartResult {
@@ -46,6 +51,7 @@ export interface PartResult {
   quantity: string
   is_consumable: boolean
   suppliers: SupplierPrice[]
+  cheapest_pence: number | null
 }
 
 export interface FaultPartsBreakdown {

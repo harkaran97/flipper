@@ -30,6 +30,7 @@ from app.models.opportunity import Opportunity
 from app.models.parts_price_cache import PartsPriceCache
 from app.models.vehicle import Vehicle
 from app.services.parts_pricing import PartsPricingService
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -347,6 +348,10 @@ async def _load_suppliers_from_cache(
                 in_stock=item.get("availability", "in_stock") == "in_stock",
                 price_confidence=item.get("price_confidence", "live"),
             ))
+        # Strip stub/scraped suppliers when running in live eBay-only mode
+        if settings.ebay_parts_live and not settings.parts_stub:
+            suppliers = [s for s in suppliers if "ebay" in s.supplier.lower()]
+
         return suppliers
     except Exception as exc:
         logger.warning("Failed to deserialise parts cache for %s: %s", cache_key, exc)

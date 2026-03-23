@@ -1,35 +1,91 @@
 /**
- * Detail screen header: car logo, name, asking price, profit hero,
- * classification badges, and optional unpriced faults warning.
+ * Detail screen hero section.
+ * Car logo, make/model/year, asking price, 48px profit hero with spring entrance,
+ * margin/effort caption, and opportunity class badge.
+ * Profit is green (#34C759) for positive, red (#FF3B30) for negative.
  */
-import React from 'react'
+import React, { useEffect } from 'react'
 import { View, Text, StyleSheet } from 'react-native'
+import Animated, {
+  useSharedValue,
+  withSpring,
+  useAnimatedStyle,
+} from 'react-native-reanimated'
 import { OpportunityDetail } from '../lib/types'
-import { formatPrice, formatProfit, formatDays } from '../lib/formatters'
+import { formatPrice, formatDays } from '../lib/formatters'
 import { CarLogo } from './CarLogo'
-import { BadgeClass } from './BadgeClass'
-import { BadgeRisk } from './BadgeRisk'
 import { colours } from '../constants/colours'
 
 interface Props {
   opportunity: OpportunityDetail
 }
 
+const SPRING_IN = { damping: 14, stiffness: 280, mass: 0.8 }
+
+// Class badge — amber pill for SPECULATIVE, solid for others
+function ClassBadge({ cls, writeOff }: { cls: string; writeOff: string }) {
+  if (cls === 'exclude') return null
+
+  const isSpeculative = cls === 'speculative'
+  const bgMap: Record<string, string> = {
+    strong: colours.green,
+    worth_a_look: colours.worthALook,
+  }
+
+  if (isSpeculative) {
+    return (
+      <View style={styles.speculativePill}>
+        <Text style={styles.speculativeText}>SPECULATIVE</Text>
+      </View>
+    )
+  }
+
+  const bg = bgMap[cls] ?? colours.textMuted
+  return (
+    <View style={[styles.classPill, { backgroundColor: bg }]}>
+      <Text style={styles.classPillText}>
+        {cls === 'strong' ? 'STRONG' : 'WORTH A LOOK'}
+      </Text>
+    </View>
+  )
+}
+
 export const DetailHeader: React.FC<Props> = ({ opportunity }) => {
   const {
     make, model, year, listing_price_pence, true_profit_pence,
-    true_margin_pct, total_man_days, opportunity_class, risk_level,
+    true_margin_pct, total_man_days, opportunity_class,
     write_off_category, has_unpriced_faults,
   } = opportunity
+
+  const isPositive = true_profit_pence >= 0
+  const profitColour = isPositive ? colours.green : colours.riskHigh
+  const profitText = isPositive
+    ? `+${formatPrice(true_profit_pence)}`
+    : `-${formatPrice(Math.abs(true_profit_pence))}`
+
+  // Spring entrance animation: scale 0.8 → 1.0, opacity 0 → 1
+  const scale = useSharedValue(0.8)
+  const opacity = useSharedValue(0)
+
+  useEffect(() => {
+    scale.value = withSpring(1, SPRING_IN)
+    opacity.value = withSpring(1, SPRING_IN)
+  }, [])
+
+  const profitAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }))
 
   const showWriteOff = write_off_category && write_off_category !== 'clean'
 
   return (
-    <View>
-      <View style={styles.logoRow}>
-        <CarLogo make={make} size={56} />
-        <View style={styles.titleBlock}>
-          <Text style={styles.title} allowFontScaling={true}>
+    <View style={styles.container}>
+      {/* Car identity row */}
+      <View style={styles.identityRow}>
+        <CarLogo make={make} size={40} />
+        <View style={styles.identityText}>
+          <Text style={styles.carName} allowFontScaling={true}>
             {make} {model} {year ?? ''}
           </Text>
           <Text style={styles.askingPrice} allowFontScaling={true}>
@@ -38,30 +94,37 @@ export const DetailHeader: React.FC<Props> = ({ opportunity }) => {
         </View>
       </View>
 
-      <View style={styles.profitHero}>
-        <Text style={styles.profitLabel} allowFontScaling={false}>PROFIT</Text>
-        <Text style={styles.profit} allowFontScaling={true}>{formatProfit(true_profit_pence)}</Text>
-        <Text style={styles.profitSub} allowFontScaling={true}>
-          {true_margin_pct.toFixed(0)}% margin · {formatDays(total_man_days)} work
-        </Text>
-      </View>
+      {/* Profit hero */}
+      <Text style={styles.profitLabel} allowFontScaling={false}>PROFIT</Text>
+      <Animated.Text
+        style={[styles.profitHero, { color: profitColour }, profitAnimStyle]}
+        allowFontScaling={true}
+        fontVariant={['tabular-nums']}
+      >
+        {profitText}
+      </Animated.Text>
+      <Text style={styles.profitCaption} allowFontScaling={true}>
+        {true_margin_pct.toFixed(0)}% margin · {formatDays(total_man_days)} work
+      </Text>
 
+      {/* Badges */}
       <View style={styles.badgeRow}>
-        <BadgeClass opportunityClass={opportunity_class} />
+        <ClassBadge cls={opportunity_class} writeOff={write_off_category} />
         {showWriteOff && (
-          <View style={[styles.writeOffBadge, {
-            backgroundColor: write_off_category === 'Cat S' ? colours.catS : colours.catN
-          }]}>
-            <Text style={styles.writeOffText} allowFontScaling={false}>{write_off_category}</Text>
+          <View style={[
+            styles.classPill,
+            { backgroundColor: write_off_category === 'Cat S' ? colours.catS : colours.catN },
+          ]}>
+            <Text style={styles.classPillText}>{write_off_category}</Text>
           </View>
         )}
-        <BadgeRisk risk={risk_level} />
       </View>
 
+      {/* Unpriced warning */}
       {has_unpriced_faults && (
         <View style={styles.warningBanner}>
           <Text style={styles.warningText} allowFontScaling={true}>
-            Profit estimate is a floor figure — some faults could not be priced.
+            Profit is a floor estimate — some faults could not be priced.
           </Text>
         </View>
       )}
@@ -70,67 +133,86 @@ export const DetailHeader: React.FC<Props> = ({ opportunity }) => {
 }
 
 const styles = StyleSheet.create({
-  logoRow: {
+  container: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 20,
+  },
+  identityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    marginBottom: 16,
+    gap: 12,
+    marginBottom: 20,
   },
-  titleBlock: { flex: 1 },
-  title: {
-    fontSize: 20,
+  identityText: { flex: 1 },
+  carName: {
+    fontSize: 18,
     fontWeight: '700',
     color: colours.textPrimary,
   },
   askingPrice: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '400',
     color: colours.textSecondary,
-    fontVariant: ['tabular-nums'],
     marginTop: 2,
+    fontVariant: ['tabular-nums'],
   },
-  profitHero: { marginBottom: 16 },
   profitLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '600',
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
     color: colours.textMuted,
     textTransform: 'uppercase',
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  profit: {
-    fontSize: 32,
+  profitHero: {
+    fontSize: 48,
     fontWeight: '700',
-    color: colours.green,
     fontVariant: ['tabular-nums'],
+    letterSpacing: -1,
   },
-  profitSub: {
+  profitCaption: {
     fontSize: 15,
-    color: colours.textMuted,
+    color: colours.textSecondary,
+    marginTop: 4,
     fontVariant: ['tabular-nums'],
-    marginTop: 2,
   },
   badgeRow: {
     flexDirection: 'row',
     gap: 8,
     flexWrap: 'wrap',
-    marginBottom: 16,
+    marginTop: 16,
   },
-  writeOffBadge: {
-    borderRadius: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+  classPill: {
+    borderRadius: 100,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  writeOffText: {
-    fontSize: 11,
+  classPillText: {
+    fontSize: 12,
     fontWeight: '600',
     color: colours.white,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  speculativePill: {
+    borderRadius: 100,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(255,149,0,0.15)',
+  },
+  speculativeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colours.amber,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
   },
   warningBanner: {
+    marginTop: 16,
     backgroundColor: colours.bg,
-    borderRadius: 8,
+    borderRadius: 10,
     padding: 12,
-    marginBottom: 8,
     borderWidth: 1,
     borderColor: colours.border,
     borderLeftWidth: 3,
