@@ -27,7 +27,7 @@ class EbayListingsAdapter(BaseListingsAdapter):
         params = {
             "q": query or "spares or repair",
             "category_ids": "9801",
-            "filter": f"conditionIds:{{7000}},maxDeliveryDistance:{{80|km}},itemLocationCountry:GB",
+            "filter": "maxDeliveryDistance:{80|km},itemLocationCountry:GB",
             "buyerPostalCode": postcode,
             "sort": "newlyListed",
             "limit": "50",
