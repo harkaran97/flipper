@@ -16,11 +16,28 @@ async def search_market_value(
 ) -> SearchResult:
     current_month_year = date.today().strftime("%B %Y")
     label_part = f" {write_off_label}" if write_off_label else ""
-    spec_parts = list(filter(None, [trim, fuel_type, f"{engine_cc}cc" if engine_cc else None]))
+
+    vehicle_parts = []
+    if make and make.lower() != "unknown":
+        vehicle_parts.append(make)
+    if model and model.lower() != "unknown":
+        vehicle_parts.append(model)
+    if year and year > 2000:
+        vehicle_parts.insert(0, str(year))
+
+    spec_parts = []
+    if trim and trim.lower() not in ("unknown", "none"):
+        spec_parts.append(trim)
+    if fuel_type:
+        spec_parts.append(fuel_type)
+    if engine_cc:
+        spec_parts.append(f"{engine_cc}cc")
     spec_str = " ".join(spec_parts)
+
+    vehicle_str = " ".join(vehicle_parts)
     query = (
         f"You are a UK car market analyst. Find recent sold prices for a "
-        f"{year} {make} {model} {spec_str}{label_part} in the UK as of {current_month_year}. "
+        f"{vehicle_str} {spec_str}{label_part} in the UK as of {current_month_year}. "
         f"Search these UK sources: eBay Motors UK completed listings, AutoTrader UK, "
         f"PistonHeads, BCA and Manheim auction results. "
         f"Extract sold prices only, not asking prices. UK sales only. Exclude non-GBP listings."

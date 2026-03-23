@@ -29,10 +29,24 @@ class EbaySoldAdapter(BaseSoldAdapter):
         """
         Search eBay for sold vehicle listings matching make/model/year.
         Uses Browse API with used condition and sold filter.
+        Omits Unknown make/model and year=0/implausible from query.
         Returns up to 20 sold comps.
         """
+        query_parts = []
+        if make and make.lower() != "unknown":
+            query_parts.append(make)
+        if model and model.lower() != "unknown":
+            query_parts.append(model)
+        if year and year > 2000:
+            query_parts.append(str(year))
+        query_str = " ".join(query_parts)
+
+        if not query_str:
+            logger.warning("eBay sold comps skipped — no usable vehicle fields (make=%s, model=%s, year=%d)", make, model, year)
+            return []
+
         params = {
-            "q": f"{make} {model} {year}",
+            "q": query_str,
             "category_ids": EBAY_MOTORS_CATEGORY,
             "filter": "conditionIds:{3000},soldItems:true",
             "sort": "endTimeSoonest",
@@ -59,7 +73,7 @@ class EbaySoldAdapter(BaseSoldAdapter):
                 continue
 
         logger.info(
-            "eBay sold comps returned %d results for %s %s %d",
-            len(listings), make, model, year,
+            "eBay sold comps returned %d results for query=%r",
+            len(listings), query_str,
         )
         return listings
