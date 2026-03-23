@@ -10,6 +10,7 @@ import logging
 
 from app.adapters.base import BaseListingsAdapter, RawListing
 from app.adapters.ebay.client import EbayClient
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +23,13 @@ class EbayListingsAdapter(BaseListingsAdapter):
 
     async def search_listings(self, query: str, filters: dict) -> list[RawListing]:
         """Search eBay for spares/repair vehicle listings."""
+        distance = settings.ebay_max_distance_miles
+        postcode = settings.user_postcode
         params = {
             "q": query or "spares or repair",
             "category_ids": "9801",
-            "filter": "conditionIds:{7000}",
+            "filter": f"conditionIds:{{7000}},maxDeliveryDistance:{{{distance}|mi}}",
+            "buyerPostalCode": postcode,
             "sort": "newlyListed",
             "limit": "50",
             "fieldgroups": "MATCHING_ITEMS",

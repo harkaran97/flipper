@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # eBay compliance
     ebay_verification_token: str = ""  # Set via EBAY_VERIFICATION_TOKEN env var
 
+    # eBay location filter
+    ebay_max_distance_miles: int = 50  # Max distance from user_postcode for eBay listings
+
     # Parts pricing service
     parts_stub: bool = True          # Set false when scrapers are verified in production
     user_postcode: str = "LE4 8JF"  # Default postcode for delivery calculation
