@@ -52,6 +52,9 @@ COMP_POOL_MAP = {
     # CAT_A and CAT_B never reach this service — excluded at detection
 }
 
+# Trim values that are noise rather than signal in a search context — suppress from query
+SUPPRESS_TRIM_IN_QUERY = {"unknown", "none", "", "base", "standard", "n/a", "na"}
+
 
 def get_sold_adapter():
     """Returns stub or live sold comps adapter based on config."""
@@ -101,14 +104,18 @@ def linkup_confidence(sample_count: int | None) -> MarketValueConfidence:
     return MarketValueConfidence.HIGH
 
 
-def build_vehicle_query(make: str, model: str, year: int, trim: str = None) -> str:
+def build_vehicle_query(
+    make: str,
+    model: str,
+    year: int,
+    trim: str = None,
+    fuel_type: str = None,
+    engine_cc: int = None,
+) -> str:
     """
-    Builds a clean vehicle query string, omitting fields that have no real value.
-    Excludes 'Unknown' make/model/trim and year=0 or implausible years (<= 2000).
-    Deduplicates make from query when model already contains the make name
-    (e.g. make=Range Rover, model=Range Rover Sport → "Range Rover Sport", not
-    "Range Rover Range Rover Sport").
-    Returns empty string if both make and model are unknown.
+    Builds a clean vehicle query string for eBay sold comps search.
+    Omits Unknown/None/0 values. Deduplicates make from model name.
+    Includes trim, fuel_type, engine_cc when available for specificity.
     """
     parts = []
     clean_make = make.strip() if make and make.lower() != "unknown" else None
@@ -126,8 +133,17 @@ def build_vehicle_query(make: str, model: str, year: int, trim: str = None) -> s
             # Model contains make — use model only (it's more specific)
             parts[-1] = clean_model
 
-    if trim and trim.lower() not in ("unknown", "none"):
+    if trim and trim.lower().strip() not in SUPPRESS_TRIM_IN_QUERY:
         parts.append(trim)
+
+    if fuel_type and fuel_type.lower() not in ("unknown", "none", ""):
+        parts.append(fuel_type)
+
+    if engine_cc and engine_cc > 0:
+        # Convert cc to litre string: 999 → "1.0", 1598 → "1.6", 1995 → "2.0"
+        litres = round(engine_cc / 1000, 1)
+        parts.append(f"{litres}")
+
     if year and year > 2000:
         parts.append(str(year))
     return " ".join(parts)
@@ -138,21 +154,23 @@ def build_comp_search_query(
     model: str,
     year: int,
     write_off_category: WriteOffCategory,
+    trim: str = None,
+    fuel_type: str = None,
+    engine_cc: int = None,
 ) -> str:
     """
-    Builds eBay search query string ensuring like-for-like comps.
-    Write-off category is injected into the query so results are comparable.
-    Returns empty string if vehicle data is insufficient (both make and model unknown).
+    Builds eBay sold comps query with like-for-like write-off category
+    and full vehicle spec for maximum specificity.
     """
-    base = build_vehicle_query(make, model, year)
+    base = build_vehicle_query(make, model, year, trim, fuel_type, engine_cc)
     if not base:
         return ""
     category_terms = {
-        WriteOffCategory.CLEAN: base,
-        WriteOffCategory.CAT_N: f"{base} cat n",
-        WriteOffCategory.CAT_S: f"{base} cat s",
-        WriteOffCategory.FLOOD: f"{base} flood damaged",
-        WriteOffCategory.FIRE: f"{base} fire damaged",
+        WriteOffCategory.CLEAN:           base,
+        WriteOffCategory.CAT_N:           f"{base} cat n",
+        WriteOffCategory.CAT_S:           f"{base} cat s",
+        WriteOffCategory.FLOOD:           f"{base} flood damaged",
+        WriteOffCategory.FIRE:            f"{base} fire damaged",
         WriteOffCategory.UNKNOWN_WRITEOFF: f"{base} salvage",
     }
     return category_terms.get(write_off_category, base)
@@ -297,7 +315,7 @@ async def estimate_market_value(
         write_off_category = WriteOffCategory.CLEAN
 
     # 2. Build like-for-like comp query
-    vehicle_query = build_vehicle_query(make, model, year)
+    vehicle_query = build_vehicle_query(make, model, year, trim, fuel_type, engine_cc)
     if not vehicle_query:
         logger.warning(
             "[VALUATION] Skipping market value — insufficient vehicle data for listing %s",
@@ -305,7 +323,12 @@ async def estimate_market_value(
         )
         return
 
-    comp_query = build_comp_search_query(make, model, year, write_off_category)
+    comp_query = build_comp_search_query(
+        make, model, year, write_off_category,
+        trim=trim,
+        fuel_type=fuel_type,
+        engine_cc=engine_cc,
+    )
     write_off_label = WRITE_OFF_LABELS.get(write_off_category, "")
     logger.info(
         "Market value search: query=%r, write_off=%s, listing=%s",
