@@ -103,7 +103,7 @@ class PartsPricingService:
         # 2. Run all adapters in parallel — never raise
         logger.info("Parts pricing query: %s for %s %s %d", part_name, make, model, year)
         raw_results = await asyncio.gather(
-            self.ebay_adapter.search(part_name, make, model, year),
+            self.ebay_adapter.search(part_name, make, model, year, session=session),
             self.autodoc_adapter.search(part_name, make, model, year),
             self.gsf_adapter.search(part_name, make, model, year),
             self.carparts4less_adapter.search(part_name, make, model, year),

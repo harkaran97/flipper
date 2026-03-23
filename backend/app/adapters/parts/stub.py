@@ -281,6 +281,7 @@ class StubPartsAdapter(BasePartsSupplierAdapter):
         make: str,
         model: str,
         year: int,
+        session=None,  # ignored
     ) -> list[PartResult]:
         logger.debug("StubPartsAdapter.search(%s, %s, %s, %d)", part_name, make, model, year)
         key = part_name.lower().strip()

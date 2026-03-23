@@ -44,6 +44,7 @@ class AutodocAdapter(BasePartsSupplierAdapter):
         make: str,
         model: str,
         year: int,
+        session=None,  # ignored
     ) -> list[PartResult]:
         if not self.VALIDATED:
             logger.debug(
