@@ -80,3 +80,16 @@ class EbayClient:
         )
         response.raise_for_status()
         return response.json()
+
+    async def get_item(self, item_id: str) -> dict:
+        """Fetch full item data from eBay Browse API by item ID."""
+        token = await self.get_token()
+        response = await self._http.get(
+            f"{EBAY_BROWSE_API_BASE}/item/{item_id}",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "X-EBAY-C-MARKETPLACE-ID": "EBAY_GB",
+            },
+        )
+        response.raise_for_status()
+        return response.json()

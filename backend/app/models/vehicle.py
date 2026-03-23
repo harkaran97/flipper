@@ -19,6 +19,9 @@ class Vehicle(Base):
     fuel_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     transmission: Mapped[str | None] = mapped_column(String(50), nullable=True)
     trim: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    mileage: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    body_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    colour: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     def __repr__(self) -> str:
         return f"<Vehicle(id={self.id}, make={self.make}, model={self.model}, year={self.year})>"

@@ -8,6 +8,7 @@ Only used when EBAY_STUB=false.
 
 import logging
 import re
+from html.parser import HTMLParser
 
 from app.adapters.base import BaseListingsAdapter, RawListing
 from app.adapters.ebay.client import EbayClient
@@ -26,6 +27,20 @@ _UK_CAR_MAKES = [
 
 # Normalise VW → Volkswagen for consistency
 _MAKE_ALIASES = {"VW": "Volkswagen"}
+
+
+class _HTMLStripper(HTMLParser):
+    """Simple HTML tag stripper for seller descriptions."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self._parts.append(data)
+
+    def get_text(self) -> str:
+        return " ".join(part.strip() for part in self._parts if part.strip())
 
 
 def _parse_engine_cc(value: str) -> int | None:
@@ -49,15 +64,33 @@ def _parse_mileage(value: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def extract_vehicle_from_item(item: dict) -> dict:
+def extract_description(item: dict) -> str | None:
+    """
+    Extract and clean the seller description from a full eBay item dict.
+
+    Strips HTML tags to plain text. Returns None if no description present.
+    """
+    raw = item.get("description")
+    if not raw:
+        return None
+    stripper = _HTMLStripper()
+    stripper.feed(raw)
+    text = stripper.get_text()
+    return text if text else None
+
+
+def extract_vehicle_from_item(item: dict) -> tuple[dict, list[str]]:
     """
     Extract vehicle fields from an eBay item dict.
 
-    Attempts to parse localizedAspects first; falls back to title heuristics
-    for make/model/year when aspects are absent or incomplete.
+    Attempts to parse localizedAspects first (trusted structured data);
+    falls back to title heuristics for make/model/year when aspects are
+    absent or incomplete.
 
-    Returns a dict with keys: make, model, year, fuel_type, engine_cc,
-    transmission. Values may be None/0 when unavailable.
+    Returns:
+        (vehicle_dict, missing_fields) where missing_fields is a list of
+        field names that were not obtainable from eBay structured data and
+        should be inferred by AI from title + description.
     """
     title = item.get("title", "")
     aspects = item.get("localizedAspects", [])
@@ -83,6 +116,9 @@ def extract_vehicle_from_item(item: dict) -> dict:
     fuel_type = get_aspect("fuel type", "engine")
     engine_str = get_aspect("engine size")
     transmission = get_aspect("transmission")
+    mileage_str = get_aspect("mileage", "vehicle mileage")
+    body_type = get_aspect("body type", "body style")
+    colour = get_aspect("colour", "color", "exterior colour", "exterior color")
 
     # Parse year
     year: int = 0
@@ -96,6 +132,11 @@ def extract_vehicle_from_item(item: dict) -> dict:
     if engine_str:
         engine_cc = _parse_engine_cc(engine_str)
 
+    # Parse mileage
+    mileage: int | None = None
+    if mileage_str:
+        mileage = _parse_mileage(mileage_str)
+
     # Fallback: extract make/model/year from title when aspects incomplete
     if not make or not model or not year:
         make, model, year = _parse_from_title(title, make, model, year)
@@ -104,20 +145,46 @@ def extract_vehicle_from_item(item: dict) -> dict:
     if make:
         make = _MAKE_ALIASES.get(make.upper(), make)
 
-    n_aspects = len(aspects)
-    logger.debug(
-        "[INGESTION] Vehicle extracted: make=%s model=%s year=%s from aspects=%d title=%r",
-        make, model, year, n_aspects, title[:60],
+    # Track which fields came from eBay specifics vs need AI inference.
+    # Fields obtained from aspects are trusted; missing ones go to AI.
+    _from_specifics: list[str] = []
+    _missing: list[str] = []
+
+    for field_name, raw_val in [
+        ("make", get_aspect("make")),
+        ("model", get_aspect("model")),
+        ("year", get_aspect("year", "registration year")),
+        ("engine_cc", engine_cc),
+        ("mileage", mileage),
+        ("fuel_type", fuel_type),
+        ("transmission", transmission),
+        ("body_type", body_type),
+    ]:
+        if raw_val:
+            _from_specifics.append(field_name)
+        else:
+            _missing.append(field_name)
+
+    logger.info(
+        "[INGESTION] eBay specifics: make=%s model=%s year=%s engine_cc=%s mileage=%s fuel=%s "
+        "transmission=%s body_type=%s — missing: %s",
+        make, model, year or None, engine_cc, mileage, fuel_type,
+        transmission, body_type,
+        ", ".join(_missing) if _missing else "none",
     )
 
-    return {
+    vehicle_dict = {
         "make": make or "Unknown",
         "model": model or "Unknown",
         "year": year or 0,
         "fuel_type": fuel_type,
         "engine_cc": engine_cc,
         "transmission": transmission,
+        "mileage": mileage,
+        "body_type": body_type,
+        "colour": colour,
     }
+    return vehicle_dict, _missing
 
 
 def _parse_from_title(
@@ -162,6 +229,10 @@ class EbayListingsAdapter(BaseListingsAdapter):
 
     def __init__(self) -> None:
         self._client = EbayClient()
+
+    async def fetch_item(self, item_id: str) -> dict:
+        """Fetch full item data for a single eBay listing."""
+        return await self._client.get_item(item_id)
 
     async def search_listings(self, query: str, filters: dict) -> list[RawListing]:
         """Search eBay for spares/repair vehicle listings."""

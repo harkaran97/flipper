@@ -216,18 +216,40 @@ async def detect_problems(
     model = vehicle.model if vehicle else "Unknown"
     year = vehicle.year if vehicle else 0
     fuel_type = vehicle.fuel_type if vehicle else None
+    transmission = vehicle.transmission if vehicle else None
+    mileage = vehicle.mileage if vehicle else None
+    body_type = vehicle.body_type if vehicle else None
     engine_code = None  # Not yet in vehicle model, will be added in enrichment
 
     if vehicle:
         logger.info(
-            "[DETECTOR] Step 1 OK: Vehicle fetched — %s %s %d fuel=%s",
-            make, model, year, fuel_type,
+            "[DETECTOR] Step 1 OK: Vehicle fetched — %s %s %d fuel=%s transmission=%s mileage=%s",
+            make, model, year, fuel_type, transmission, mileage,
         )
     else:
         logger.warning(
             "[DETECTOR] Step 1 WARN: No vehicle row found for listing %s — using Unknown defaults",
             listing_id,
         )
+
+    # Determine which fields need AI inference (those not populated from eBay specifics)
+    missing_fields: list[str] = []
+    if vehicle:
+        for field_name, value in [
+            ("make", make if make != "Unknown" else None),
+            ("model", model if model != "Unknown" else None),
+            ("year", year or None),
+            ("fuel_type", fuel_type),
+            ("engine_cc", vehicle.engine_cc),
+            ("transmission", transmission),
+            ("mileage", mileage),
+            ("body_type", body_type),
+        ]:
+            if not value:
+                missing_fields.append(field_name)
+    else:
+        missing_fields = ["make", "model", "year", "fuel_type", "engine_cc",
+                          "transmission", "mileage", "body_type"]
 
     # 2. Check write-off keywords first (fast, no AI)
     logger.info("[DETECTOR] Step 2: Running write-off keyword check")
@@ -276,6 +298,11 @@ async def detect_problems(
         description=listing.description or "",
         known_fault_count=len(known_problems),
         has_unknown_faults=False,  # Will be determined after first pass
+        transmission=transmission,
+        mileage=mileage,
+        body_type=body_type,
+        price_pence=listing.price_pence,
+        missing_fields=missing_fields,
     )
     logger.info(
         "[DETECTOR] Step 4 OK: AI returned %d mechanical_fault(s), write_off=%s, "

@@ -15,7 +15,11 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.adapters.base import RawListing
-from app.adapters.ebay.listings import EbayListingsAdapter, extract_vehicle_from_item
+from app.adapters.ebay.listings import (
+    EbayListingsAdapter,
+    extract_description,
+    extract_vehicle_from_item,
+)
 from app.adapters.ebay.stub import EbayStubAdapter
 from app.core.database import AsyncSessionLocal
 from app.events.bus import EventBus
@@ -68,7 +72,8 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
        a. Check duplicate — skip if seen
        b. Apply keyword filter — skip if no match
        c. Store in DB
-       d. Emit NEW_LISTING_FOUND event
+       d. Fetch full item data (live eBay only) to enrich vehicle + description
+       e. Emit NEW_LISTING_FOUND event
     Returns: dict with counts for logging
     """
     stats = {"fetched": 0, "duplicates": 0, "filtered": 0, "stored": 0}
@@ -101,12 +106,35 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
         session.add(listing)
         await session.flush()
 
+        # Attempt full item fetch for live eBay listings to get structured
+        # specifics and full seller description. Degrades gracefully on failure.
+        full_item: dict | None = None
+        if isinstance(adapter, EbayListingsAdapter) and raw.source == "ebay":
+            try:
+                full_item = await adapter.fetch_item(raw.external_id)
+                full_description = extract_description(full_item)
+                if full_description:
+                    listing.description = full_description
+                    logger.info(
+                        "[INGESTION] Full description stored for ebay_id=%s len=%d",
+                        raw.external_id, len(full_description),
+                    )
+            except Exception:
+                logger.warning(
+                    "[INGESTION] Item fetch failed for ebay_id=%s — continuing with summary data only",
+                    raw.external_id,
+                )
+
         # Seed a Vehicle row from stub data (stub adapter) or from eBay item
         # specifics / title heuristics (real eBay adapter).
         stub_vehicles: dict = getattr(adapter, "STUB_VEHICLE_DATA", {})
         vehicle_data = stub_vehicles.get(raw.external_id)
-        if vehicle_data is None and raw.source == "ebay" and raw.raw_json:
-            vehicle_data = extract_vehicle_from_item(raw.raw_json)
+
+        if vehicle_data is None and raw.source == "ebay":
+            item_data = full_item if full_item is not None else raw.raw_json
+            if item_data:
+                vehicle_data, _missing = extract_vehicle_from_item(item_data)
+
         if vehicle_data:
             session.add(Vehicle(listing_id=listing.id, **vehicle_data))
 
