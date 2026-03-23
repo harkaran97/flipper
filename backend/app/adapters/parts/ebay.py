@@ -58,41 +58,140 @@ class EbayPartsAdapter(BasePartsSupplierAdapter):
         model: str,
         year: int,
     ) -> list[PartResult]:
+        """
+        Searches eBay Parts & Accessories using compatibility_filter.
+        Returns only parts tagged as compatible with the specific vehicle.
+        Falls back to keyword search if compatibility search returns 0 results.
+        """
         from app.adapters.ebay.client import EbayClient
         client = EbayClient()
 
-        query = f"{part_name} {make} {model}"
+        # Primary: compatibility filter search (vehicle-specific)
+        results = await self._compatibility_search(
+            client, part_name, make, model, year
+        )
 
-        # Primary: new parts only
+        # Fallback: keyword search if compatibility returns nothing
+        # This handles cases where sellers haven't tagged compatibility,
+        # which is common for older/rarer vehicles
+        if not results:
+            logger.info(
+                "EbayPartsAdapter: compatibility search returned 0 for '%s' "
+                "%s %s %d — falling back to keyword search",
+                part_name, make, model, year,
+            )
+            results = await self._keyword_search(client, part_name, make, model)
+
+        results.sort(key=lambda r: r.total_cost_pence)
+        return results[:5]
+
+    async def _compatibility_search(
+        self,
+        client,
+        part_name: str,
+        make: str,
+        model: str,
+        year: int,
+    ) -> list[PartResult]:
+        """
+        Uses eBay compatibility_filter to find vehicle-specific parts.
+        Only fires when make, model, and year are all known.
+        Returns empty list if vehicle data insufficient or API returns nothing.
+        """
+        # Skip compatibility search if vehicle data is incomplete
+        if (
+            not make or make.lower() == "unknown"
+            or not model or model.lower() == "unknown"
+            or not year or year < 1990
+        ):
+            logger.debug(
+                "EbayPartsAdapter: skipping compatibility search — "
+                "insufficient vehicle data (make=%s model=%s year=%s)",
+                make, model, year,
+            )
+            return []
+
+        compatibility_filter = f"Year:{year},Make:{make},Model:{model}"
+
         params = {
-            "q": query,
+            "q": part_name,
             "category_ids": EBAY_PARTS_CATEGORY,
-            "filter": "itemLocationCountry:GB,deliveryCountry:GB,conditionIds:{1000}",
+            "compatibility_filter": compatibility_filter,
+            "filter": "itemLocationCountry:GB,deliveryCountry:GB",
             "sort": "price",
             "limit": "10",
         }
-        data = await client.get("/item_summary/search", params)
-        items = data.get("itemSummaries", [])
 
-        # Fallback: any condition if new-only returns nothing
-        if not items:
-            params_fallback = {
-                "q": query,
-                "category_ids": EBAY_PARTS_CATEGORY,
-                "filter": "itemLocationCountry:GB,deliveryCountry:GB",
-                "sort": "price",
-                "limit": "10",
-            }
-            data = await client.get("/item_summary/search", params_fallback)
+        try:
+            data = await client.get("/item_summary/search", params)
             items = data.get("itemSummaries", [])
+            logger.info(
+                "EbayPartsAdapter: compatibility search '%s' for %s %s %d "
+                "returned %d results",
+                part_name, make, model, year, len(items),
+            )
+            return self._parse_items(items, part_name)
+        except Exception as exc:
+            logger.warning(
+                "EbayPartsAdapter: compatibility search failed for '%s': %s",
+                part_name, exc,
+            )
+            return []
 
+    async def _keyword_search(
+        self,
+        client,
+        part_name: str,
+        make: str,
+        model: str,
+    ) -> list[PartResult]:
+        """
+        Fallback keyword search when compatibility search returns nothing.
+        Less precise but catches listings where sellers haven't tagged compatibility.
+        """
+        query = f"{part_name} {make} {model}".strip()
+
+        params = {
+            "q": query,
+            "category_ids": EBAY_PARTS_CATEGORY,
+            "filter": "itemLocationCountry:GB,deliveryCountry:GB",
+            "sort": "price",
+            "limit": "10",
+        }
+
+        try:
+            data = await client.get("/item_summary/search", params)
+            items = data.get("itemSummaries", [])
+            logger.info(
+                "EbayPartsAdapter: keyword search '%s' returned %d results",
+                query, len(items),
+            )
+            return self._parse_items(items, part_name)
+        except Exception as exc:
+            logger.warning(
+                "EbayPartsAdapter: keyword search failed for '%s': %s",
+                query, exc,
+            )
+            return []
+
+    def _parse_items(self, items: list[dict], part_name: str) -> list[PartResult]:
+        """
+        Parses eBay item summaries into PartResult objects.
+        Skips items with missing price data. Never raises.
+        """
         results = []
-        for item in items[:10]:
+        for item in items:
             try:
-                base_price_pence = int(float(item["price"]["value"]) * 100)
+                base_price_pence = int(
+                    float(item["price"]["value"]) * 100
+                )
                 shipping_options = item.get("shippingOptions", [])
                 if shipping_options:
-                    ship_cost = float(shipping_options[0].get("shippingCost", {}).get("value", 0))
+                    ship_cost = float(
+                        shipping_options[0]
+                        .get("shippingCost", {})
+                        .get("value", 0)
+                    )
                     delivery_pence = int(ship_cost * 100)
                 else:
                     delivery_pence = 0
@@ -114,8 +213,8 @@ class EbayPartsAdapter(BasePartsSupplierAdapter):
                     price_confidence="live",
                 ))
             except (KeyError, ValueError, TypeError) as exc:
-                logger.debug("EbayPartsAdapter: skipping item due to parse error: %s", exc)
+                logger.debug(
+                    "EbayPartsAdapter: skipping item due to parse error: %s", exc
+                )
                 continue
-
-        results.sort(key=lambda r: r.total_cost_pence)
-        return results[:5]
+        return results
