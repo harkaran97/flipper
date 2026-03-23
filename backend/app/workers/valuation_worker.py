@@ -41,8 +41,36 @@ async def handle_repair_estimated(event: Event) -> None:
     try:
         async with AsyncSessionLocal() as session:
             await estimate_market_value(session, listing_id, _bus)
-    except Exception:
-        logger.error("Market valuation failed for listing %s", listing_id, exc_info=True)
+    except Exception as e:
+        logger.error(
+            "Market valuation failed for listing %s: %s",
+            listing_id, e,
+            exc_info=True,
+        )
+        # Emit a zero-confidence fallback so the scoring worker can still run
+        if _bus is not None:
+            try:
+                await _bus.emit(Event(
+                    type=EventType.MARKET_VALUE_ESTIMATED,
+                    payload={
+                        "listing_id": str(listing_id),
+                        "median_value_pence": 0,
+                        "comp_count": 0,
+                        "confidence": "low",
+                        "write_off_category": "clean",
+                        "linkup_fallback_used": False,
+                    },
+                ))
+                logger.info(
+                    "Fallback MARKET_VALUE_ESTIMATED emitted for listing %s (median=0, confidence=low)",
+                    listing_id,
+                )
+            except Exception:
+                logger.error(
+                    "Failed to emit fallback MARKET_VALUE_ESTIMATED for listing %s",
+                    listing_id,
+                    exc_info=True,
+                )
 
 
 def register_valuation_worker(bus: EventBus) -> None:

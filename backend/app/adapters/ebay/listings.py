@@ -136,6 +136,12 @@ def extract_vehicle_from_item(item: dict) -> tuple[dict, list[str]]:
     mileage: int | None = None
     if mileage_str:
         mileage = _parse_mileage(mileage_str)
+    if mileage and mileage > 500000:
+        logger.warning(
+            "[INGESTION] Implausible mileage %d — ignoring (raw=%r)",
+            mileage, mileage_str,
+        )
+        mileage = None
 
     # Fallback: extract make/model/year from title when aspects incomplete
     if not make or not model or not year:
@@ -145,22 +151,22 @@ def extract_vehicle_from_item(item: dict) -> tuple[dict, list[str]]:
     if make:
         make = _MAKE_ALIASES.get(make.upper(), make)
 
-    # Track which fields came from eBay specifics vs need AI inference.
-    # Fields obtained from aspects are trusted; missing ones go to AI.
+    # Track which fields are present vs missing AFTER all extraction
+    # (aspects + title heuristics). This reflects what AI actually needs to infer.
     _from_specifics: list[str] = []
     _missing: list[str] = []
 
-    for field_name, raw_val in [
-        ("make", get_aspect("make")),
-        ("model", get_aspect("model")),
-        ("year", get_aspect("year", "registration year")),
+    for field_name, final_val in [
+        ("make", make if make and make != "Unknown" else None),
+        ("model", model if model and model != "Unknown" else None),
+        ("year", year or None),
         ("engine_cc", engine_cc),
         ("mileage", mileage),
         ("fuel_type", fuel_type),
         ("transmission", transmission),
         ("body_type", body_type),
     ]:
-        if raw_val:
+        if final_val:
             _from_specifics.append(field_name)
         else:
             _missing.append(field_name)

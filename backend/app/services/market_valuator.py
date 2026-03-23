@@ -163,10 +163,18 @@ async def _get_linkup_data(
     """
     cache_key = f"{make}_{model}_{year}_{trim}_{fuel_type}_{engine_cc}_{write_off_category.value}".lower()
 
-    result = await session.execute(
-        select(LinkupMarketValueCache).where(LinkupMarketValueCache.cache_key == cache_key)
-    )
-    cached = result.scalar_one_or_none()
+    try:
+        result = await session.execute(
+            select(LinkupMarketValueCache).where(LinkupMarketValueCache.cache_key == cache_key)
+        )
+        cached = result.scalar_one_or_none()
+    except Exception:
+        logger.error(
+            "LinkUp cache lookup failed for listing %s — skipping cache",
+            listing_id,
+            exc_info=True,
+        )
+        cached = None
 
     if cached is not None:
         expiry = cached.created_at + timedelta(days=cached.ttl_days)
@@ -298,23 +306,37 @@ async def estimate_market_value(
         logger.error("eBay sold comps fetch failed for listing %s", listing_id, exc_info=True)
         sold_comps = []
 
-    prices = [comp.sold_price_pence for comp in sold_comps]
+    raw_prices = [comp.sold_price_pence for comp in sold_comps]
+    prices = [p for p in raw_prices if p > 0]
+    if len(prices) < len(raw_prices):
+        logger.warning(
+            "[VALUATION] %d of %d sold comps had zero/invalid price and were excluded for listing %s",
+            len(raw_prices) - len(prices), len(raw_prices), listing_id,
+        )
     source = MarketValueSource.EBAY_SOLD.value
     linkup_fallback_used = False
 
     # 4. Always call LinkUp (cache-first) and combine with eBay prices
-    linkup_data = await _get_linkup_data(
-        session=session,
-        make=make,
-        model=model,
-        year=year,
-        write_off_category=write_off_category,
-        write_off_label=write_off_label,
-        listing_id=listing_id,
-        fuel_type=fuel_type,
-        trim=trim,
-        engine_cc=engine_cc,
-    )
+    try:
+        linkup_data = await _get_linkup_data(
+            session=session,
+            make=make,
+            model=model,
+            year=year,
+            write_off_category=write_off_category,
+            write_off_label=write_off_label,
+            listing_id=listing_id,
+            fuel_type=fuel_type,
+            trim=trim,
+            engine_cc=engine_cc,
+        )
+    except Exception:
+        logger.error(
+            "[VALUATION] LinkUp data fetch failed for listing %s — continuing with eBay comps only",
+            listing_id,
+            exc_info=True,
+        )
+        linkup_data = None
 
     linkup_sample_count = None
     if linkup_data:
@@ -334,6 +356,10 @@ async def estimate_market_value(
         low_value = min(prices)
         high_value = max(prices)
     else:
+        logger.warning(
+            "[VALUATION] No valid prices from %d eBay comps for listing %s — emitting zero estimate",
+            len(sold_comps), listing_id,
+        )
         median_value = 0
         low_value = 0
         high_value = 0
