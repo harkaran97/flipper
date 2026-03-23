@@ -41,12 +41,13 @@ class EbayPartsAdapter(BasePartsSupplierAdapter):
         make: str,
         model: str,
         year: int,
+        session=None,
     ) -> list[PartResult]:
         if settings.parts_stub or not settings.ebay_parts_live:
             stub = StubPartsAdapter()
             return await stub.search(part_name, make, model, year)
         try:
-            return await self._live_search(part_name, make, model, year)
+            return await self._live_search(part_name, make, model, year, session=session)
         except Exception as exc:
             logger.warning("EbayPartsAdapter error for '%s': %s", part_name, exc)
             return []
@@ -57,6 +58,7 @@ class EbayPartsAdapter(BasePartsSupplierAdapter):
         make: str,
         model: str,
         year: int,
+        session=None,
     ) -> list[PartResult]:
         """
         Searches eBay Parts & Accessories using compatibility_filter.
@@ -67,6 +69,7 @@ class EbayPartsAdapter(BasePartsSupplierAdapter):
         client = EbayClient()
 
         # Primary: compatibility filter search (vehicle-specific)
+        search_method = "compatibility"
         results = await self._compatibility_search(
             client, part_name, make, model, year
         )
@@ -75,6 +78,7 @@ class EbayPartsAdapter(BasePartsSupplierAdapter):
         # This handles cases where sellers haven't tagged compatibility,
         # which is common for older/rarer vehicles
         if not results:
+            search_method = "keyword"
             logger.info(
                 "EbayPartsAdapter: compatibility search returned 0 for '%s' "
                 "%s %s %d — falling back to keyword search",
@@ -83,7 +87,83 @@ class EbayPartsAdapter(BasePartsSupplierAdapter):
             results = await self._keyword_search(client, part_name, make, model)
 
         results.sort(key=lambda r: r.total_cost_pence)
+
+        if session is not None and results:
+            await self._record_observations(
+                session, part_name, make, model, year, results, search_method
+            )
+
         return results[:5]
+
+    async def _record_observations(
+        self,
+        session,
+        part_name: str,
+        make: str,
+        model: str,
+        year: int,
+        results: list[PartResult],
+        search_method: str,
+    ) -> None:
+        """
+        Records price observations from a live eBay fetch.
+        One row per result per day. Skips if already recorded today.
+        Fails silently — never blocks the pipeline.
+        """
+        from app.models.parts_price_observation import PartsPriceObservation
+        from sqlalchemy import select
+        from datetime import date
+        import re
+
+        if not results or not session:
+            return
+
+        today = date.today()
+        normalised = re.sub(r"[^a-z0-9 ]", "", part_name.lower().strip())
+
+        try:
+            for result in results:
+                existing = await session.execute(
+                    select(PartsPriceObservation).where(
+                        PartsPriceObservation.part_name_normalised == normalised,
+                        PartsPriceObservation.make == make,
+                        PartsPriceObservation.model == model,
+                        PartsPriceObservation.year == year,
+                        PartsPriceObservation.supplier == result.supplier,
+                        PartsPriceObservation.condition == result.condition,
+                        PartsPriceObservation.observed_date == today,
+                    )
+                )
+                if existing.scalar_one_or_none() is not None:
+                    continue
+
+                session.add(PartsPriceObservation(
+                    part_name=part_name,
+                    part_name_normalised=normalised,
+                    make=make,
+                    model=model,
+                    year=year,
+                    supplier=result.supplier,
+                    condition=result.condition,
+                    base_price_pence=result.base_price_pence,
+                    delivery_pence=result.delivery_pence,
+                    total_cost_pence=result.total_cost_pence,
+                    search_method=search_method,
+                    ebay_item_url=result.url or None,
+                    observed_date=today,
+                ))
+
+            await session.flush()
+            logger.debug(
+                "[PARTS_OBS] %d observation(s) — '%s' %s %s %d via %s",
+                len(results), part_name, make, model, year, search_method,
+            )
+        except Exception as exc:
+            logger.warning("[PARTS_OBS] Failed to record: %s", exc)
+            try:
+                await session.rollback()
+            except Exception:
+                pass
 
     async def _compatibility_search(
         self,
