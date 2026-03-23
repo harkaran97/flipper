@@ -141,22 +141,39 @@ async def run_once(bus: EventBus) -> dict:
     return {"listings_found": stats.get("stored", 0)}
 
 
+def _next_9am_utc() -> datetime:
+    """Return the next 09:00 UTC datetime (tomorrow if already past today's 9am)."""
+    now = datetime.now(timezone.utc)
+    candidate = now.replace(hour=9, minute=0, second=0, microsecond=0)
+    if now >= candidate:
+        candidate = candidate.replace(day=candidate.day + 1)
+    return candidate
+
+
 async def start_ingestion_worker(bus: EventBus) -> None:
     """
-    Runs indefinitely. Polls every settings.poll_interval_seconds.
-    Handles exceptions gracefully — logs error, continues polling.
-    Never crashes the worker on a single failed cycle.
+    Runs indefinitely. Polls once daily at 09:00 UTC.
+    Does NOT run immediately on startup — waits for next 09:00 UTC.
+    Handles exceptions gracefully — logs error, waits for next scheduled time.
     """
     global last_poll_time
 
-    logger.info(
-        "Ingestion worker starting. Interval: %ds, stub: %s",
-        settings.poll_interval_seconds,
-        settings.ebay_stub,
-    )
+    logger.info("Ingestion worker starting. stub: %s", settings.ebay_stub)
     adapter = get_listings_adapter()
 
     while True:
+        next_run = _next_9am_utc()
+        wait_seconds = (next_run - datetime.now(timezone.utc)).total_seconds()
+        hours, remainder = divmod(int(wait_seconds), 3600)
+        minutes = remainder // 60
+        logger.info(
+            "[INGESTION] Next poll scheduled for %s (in %dh %dm)",
+            next_run.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            hours,
+            minutes,
+        )
+        await asyncio.sleep(wait_seconds)
+
         try:
             async with AsyncSessionLocal() as session:
                 stats = await run_poll_cycle(session, adapter, bus)
@@ -164,5 +181,3 @@ async def start_ingestion_worker(bus: EventBus) -> None:
                 logger.info("Poll cycle complete: %s", stats)
         except Exception as e:
             logger.error("Poll cycle failed: %s", e, exc_info=True)
-
-        await asyncio.sleep(settings.poll_interval_seconds)
