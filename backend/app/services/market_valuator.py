@@ -87,6 +87,20 @@ def get_confidence(comp_count: int) -> MarketValueConfidence:
         return MarketValueConfidence.LOW
 
 
+def linkup_confidence(sample_count: int | None) -> MarketValueConfidence:
+    """
+    Returns confidence level derived directly from LinkUp sample_count.
+    HIGH: >= 8, MEDIUM: 3-7, LOW: < 3 or None
+    """
+    if sample_count is None or sample_count == 0:
+        return MarketValueConfidence.LOW
+    if sample_count < 3:
+        return MarketValueConfidence.LOW
+    if sample_count < 8:
+        return MarketValueConfidence.MEDIUM
+    return MarketValueConfidence.HIGH
+
+
 def build_vehicle_query(make: str, model: str, year: int, trim: str = None) -> str:
     """
     Builds a clean vehicle query string, omitting fields that have no real value.
@@ -158,12 +172,14 @@ async def _get_linkup_data(
         expiry = cached.created_at + timedelta(days=cached.ttl_days)
         if expiry > datetime.utcnow():
             logger.info(
-                "LinkUp cache hit for listing %s: key=%s", listing_id, cache_key
+                f"[LINKUP] Cache HIT for key='{cache_key}' — "
+                f"median=£{cached.median_sold_price_gbp} (saved API call)"
             )
             return {
                 "median_sold_price_gbp": cached.median_sold_price_gbp,
                 "price_range_low_gbp": cached.price_range_low_gbp,
                 "price_range_high_gbp": cached.price_range_high_gbp,
+                "sample_count": cached.sample_count,
             }
         logger.info("LinkUp cache expired for key=%s — refreshing", cache_key)
 
@@ -179,6 +195,7 @@ async def _get_linkup_data(
             engine_cc=engine_cc,
         )
         data = fallback_result.structured_data or {}
+        raw_response_dict = dict(data) if data else {}
         median_gbp = float(data.get("median_sold_price_gbp") or 0)
         low_gbp = float(data.get("price_range_low_gbp") or 0)
         high_gbp = float(data.get("price_range_high_gbp") or 0)
@@ -195,6 +212,7 @@ async def _get_linkup_data(
                 price_range_low_gbp=low_gbp,
                 price_range_high_gbp=high_gbp,
                 sample_count=sample_count,
+                raw_response_json=raw_response_dict,
             )
             session.add(entry)
             await session.flush()
@@ -207,6 +225,7 @@ async def _get_linkup_data(
                 "median_sold_price_gbp": median_gbp,
                 "price_range_low_gbp": low_gbp,
                 "price_range_high_gbp": high_gbp,
+                "sample_count": sample_count,
             }
     except Exception:
         logger.error("LinkUp search failed for listing %s", listing_id, exc_info=True)
@@ -297,10 +316,12 @@ async def estimate_market_value(
         engine_cc=engine_cc,
     )
 
+    linkup_sample_count = None
     if linkup_data:
         median_pence = int(linkup_data["median_sold_price_gbp"] * 100)
         low_pence = int(linkup_data["price_range_low_gbp"] * 100)
         high_pence = int(linkup_data["price_range_high_gbp"] * 100)
+        linkup_sample_count = linkup_data.get("sample_count")
         if median_pence > 0:
             prices.extend([low_pence, median_pence, high_pence])
             linkup_fallback_used = True
@@ -317,7 +338,11 @@ async def estimate_market_value(
         low_value = 0
         high_value = 0
 
-    confidence = get_confidence(len(prices))
+    confidence = (
+        linkup_confidence(linkup_sample_count)
+        if linkup_sample_count is not None
+        else get_confidence(len(prices))
+    )
     comp_count = len(prices)
 
     logger.info(
