@@ -1,0 +1,267 @@
+# Flipper — Bayesian Fault Probability Architecture
+
+## Vision
+
+Move fault detection from pure LLM inference to a hybrid system where AI is guided by statistically grounded fault probabilities. The model gets smarter with every listing processed, informed by both UK government MOT failure data and our own accumulating observations.
+
+---
+
+## The Problem with Pure LLM Detection
+
+Today the AI detects faults from a blank slate for every listing. It has no memory of what it has seen before and no statistical grounding in what actually goes wrong on specific vehicles. A 2007 VW Golf at 120k miles has well-known failure patterns — the AI shouldn't have to infer these from scratch every time.
+
+---
+
+## Architecture Overview
+
+Three layers working together:
+
+```
+Layer 1 — Prior Knowledge      mot_failure_priors
+           (DVSA MOT data)     Millions of verified real-world fault rates
+                                    ↓
+Layer 2 — Observed Outcomes    listing_fault_outcomes  
+           (our pipeline)      Every fault we detect, accumulating daily
+                                    ↓
+Layer 3 — Computed Posteriors  fault_probability_cache
+           (nightly job)       Bayesian update combining layers 1 + 2
+                                    ↓
+           Used by             Detection worker Step 3 — informed priors fed to AI
+                               Scoring worker — probability-weighted risk scores
+```
+
+---
+
+## Database Schema
+
+### Table 1 — `mot_failure_priors`
+Source of truth for base fault rates. Populated from DVSA public MOT data.
+
+```sql
+CREATE TABLE mot_failure_priors (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    make            VARCHAR(100) NOT NULL,
+    model           VARCHAR(100) NOT NULL,
+    year_band_start INTEGER NOT NULL,
+    year_band_end   INTEGER NOT NULL,
+    mileage_band    VARCHAR(50),        -- '0-50k' | '50k-100k' | '100k-150k' | '150k+'
+    fault_category  VARCHAR(100) NOT NULL, -- 'brakes' | 'engine' | 'suspension' | 'electrical'
+    fault_type      VARCHAR(100) NOT NULL, -- normalised fault_type matching our vocabulary
+    failure_rate    DECIMAL(5,4) NOT NULL, -- 0.0000–1.0000
+    sample_size     INTEGER NOT NULL,
+    source          VARCHAR(50) DEFAULT 'dvsa_mot',
+    last_updated    TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(make, model, year_band_start, year_band_end, mileage_band, fault_type)
+);
+```
+
+### Table 2 — `listing_fault_outcomes`
+Every fault prediction we make, with ground truth populated over time.
+
+```sql
+CREATE TABLE listing_fault_outcomes (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    listing_id      UUID REFERENCES listings(id) ON DELETE CASCADE,
+
+    -- vehicle snapshot at time of detection
+    make            VARCHAR(100),
+    model           VARCHAR(100),
+    year            INTEGER,
+    mileage         INTEGER,
+    fuel_type       VARCHAR(50),
+
+    -- AI prediction
+    predicted_fault_type    VARCHAR(100) NOT NULL,
+    predicted_confidence    DECIMAL(4,3),
+    predicted_severity      VARCHAR(50),
+    ai_overall_confidence   DECIMAL(4,3),
+
+    -- ground truth (populated later)
+    confirmed       BOOLEAN,        -- NULL=unverified | TRUE=correct | FALSE=wrong
+    actual_fault_type   VARCHAR(100), -- if confirmed=FALSE and real fault known
+    confirmed_at    TIMESTAMP WITH TIME ZONE,
+    confirmed_by    VARCHAR(50),    -- 'user_feedback' | 'manual'
+
+    created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_fault_outcomes_make_model 
+    ON listing_fault_outcomes(make, model, year, mileage);
+CREATE INDEX idx_fault_outcomes_fault_type 
+    ON listing_fault_outcomes(predicted_fault_type);
+CREATE INDEX idx_fault_outcomes_confirmed 
+    ON listing_fault_outcomes(confirmed);
+```
+
+### Table 3 — `fault_probability_cache`
+Precomputed posteriors. Rebuilt nightly. What the pipeline actually queries at runtime.
+
+```sql
+CREATE TABLE fault_probability_cache (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    make            VARCHAR(100) NOT NULL,
+    model           VARCHAR(100),
+    year_band_start INTEGER,
+    year_band_end   INTEGER,
+    mileage_band    VARCHAR(50),
+    fault_type      VARCHAR(100) NOT NULL,
+    fault_category  VARCHAR(100),
+    probability     DECIMAL(5,4) NOT NULL,
+    prior_sample_size   INTEGER,
+    observed_count      INTEGER,
+    confirmed_count     INTEGER,
+    confidence_in_prob  VARCHAR(20), -- 'high' | 'medium' | 'low'
+    computed_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(make, model, year_band_start, year_band_end, mileage_band, fault_type)
+);
+```
+
+---
+
+## Bayesian Update Logic (Nightly Job)
+
+```python
+# P(fault | vehicle) using Laplace smoothing
+
+def compute_posterior(
+    make: str, model: str, 
+    year_band: tuple, mileage_band: str, 
+    fault_type: str
+) -> float:
+    
+    prior = get_mot_prior(make, model, year_band, mileage_band, fault_type)
+    observed = get_listing_outcomes(make, model, year_band, mileage_band, fault_type)
+    
+    # Laplace smoothing — prevents zero probabilities on unseen combinations
+    alpha = 1
+    
+    prior_failures = (prior.failure_rate * prior.sample_size) if prior else 0
+    prior_total = prior.sample_size if prior else 0
+    
+    # Only use confirmed observations — unverified don't update the posterior
+    confirmed_failures = observed.confirmed_true_count
+    confirmed_total = observed.confirmed_total
+    
+    posterior = (prior_failures + confirmed_failures + alpha) / \
+                (prior_total + confirmed_total + 2 * alpha)
+    
+    return round(posterior, 4)
+```
+
+---
+
+## How It Integrates with the Detection Pipeline
+
+### Today (Step 3):
+```python
+known_faults = session.query(CarsCommonProblem)\
+    .filter_by(make=make, model=model).all()
+```
+
+### With Bayesian layer (Step 3 upgraded):
+```python
+probable_faults = session.query(FaultProbabilityCache)\
+    .filter_by(make=make, model=model)\
+    .filter(FaultProbabilityCache.year_band_start <= year)\
+    .filter(FaultProbabilityCache.year_band_end >= year)\
+    .filter(FaultProbabilityCache.mileage_band == derive_mileage_band(mileage))\
+    .filter(FaultProbabilityCache.probability >= 0.15)\
+    .order_by(FaultProbabilityCache.probability.desc())\
+    .limit(5)\
+    .all()
+```
+
+These are passed into the AI prompt as informed context:
+
+```
+STATISTICALLY PROBABLE FAULTS FOR THIS VEHICLE:
+Based on {sample_size} real UK vehicles of this type:
+- timing_chain_failure: 31% of BMW 3 Series 2010-2015 with >150k miles
+- brake_calipers_rear: 23% of Vauxhall Astra 2010-2014 with 100k-150k miles
+
+Assess whether the above are present or can be ruled out based on the 
+listing title and description. Also identify any additional faults.
+```
+
+---
+
+## DVSA MOT Data
+
+**Source:** https://data.gov.uk/dataset/e3939ef8-30c7-4ca8-9c7c-ad9475cc9b2f/anonymised-mot-tests-and-results
+
+**What it contains:** ~40 million anonymised MOT tests per year. Each record includes make, model, year, mileage at test, test result (pass/fail), and reason codes for each failure item.
+
+**Why it matters:** This is millions of verified real-world fault observations, freely available. It gives us statistically robust priors before we've processed a single eBay listing ourselves.
+
+**Ingestion approach:**
+1. Download annual CSV (filtered to cars, ~15GB raw → ~2GB filtered)
+2. Map DVSA reason codes to our normalised `fault_type` vocabulary
+3. Aggregate failure rates per make/model/year_band/mileage_band
+4. Insert into `mot_failure_priors`
+5. Trigger a full `fault_probability_cache` rebuild
+
+This is a significant one-off task but transformative for detection quality. Planned for a future phase once the core pipeline is stable.
+
+---
+
+## Fault Type Normalisation (Critical)
+
+The Bayesian model only works if fault types are consistent. `brake_calipers_rear`, `rear_brake_caliper`, and `caliper_rear` are the same fault but would be treated as three separate data points.
+
+### Normalisation rules:
+- Always `snake_case`
+- Always noun-first: `brake_calipers_rear` not `rear_brake_calipers`
+- No spaces, no hyphens
+- Standard vocabulary enforced at write time — map non-standard strings to canonical equivalents before inserting into `detected_faults` or `listing_fault_outcomes`
+
+### Canonical fault vocabulary (seed list — grows over time):
+```
+engine:       timing_chain_failure | engine_failure | head_gasket_failure | 
+              turbocharger_failure | injector_failure | oil_leak | coolant_leak
+
+transmission: clutch_failure | gearbox_failure | dsg_failure
+
+brakes:       brake_calipers_rear | brake_calipers_front | brake_discs_worn |
+              handbrake_cable | abs_failure | handbrake_control_module
+
+steering:     power_steering_failure | steering_rack_failure | 
+              power_steering_pump_failure
+
+electrical:   battery_aged | alternator_failure | starter_motor_failure |
+              ecu_failure | immobiliser_failure | abs_sensor_failure
+
+suspension:   shock_absorber_failure | wheel_bearing_failure | 
+              control_arm_failure | anti_roll_bar_link
+
+body/misc:    no_mot | lighting_rear_number_plate | windscreen_damage |
+              catalytic_converter_failure
+```
+
+---
+
+## Rollout Phases
+
+### Phase 1 — Now (TASK_023)
+- Create `listing_fault_outcomes` table
+- Auto-populate a row for every fault detected, `confirmed=NULL`
+- Ensures data accumulates from day one
+
+### Phase 2 — Next month
+- Normalise fault_type vocabulary
+- Add fault normalisation step to detection worker
+- Clean up existing `detected_faults` records
+
+### Phase 3 — When pipeline is stable (~1 month)
+- DVSA MOT data ingestion
+- Populate `mot_failure_priors`
+- Build nightly `fault_probability_cache` job
+
+### Phase 4 — When cache is populated
+- Upgrade Detection Step 3 to query `fault_probability_cache`
+- Feed statistical priors into AI prompt
+- Measure confidence score uplift
+
+### Phase 5 — When user feedback exists
+- Wire user feedback to update `confirmed` field on `listing_fault_outcomes`
+- Confirmed observations start updating posteriors
+- Model becomes self-improving
