@@ -6,6 +6,7 @@ import React from 'react'
 import { Stack } from 'expo-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { colours } from '../constants/colours'
 
 const queryClient = new QueryClient()
 
@@ -22,9 +23,8 @@ export default function RootLayout() {
           options={{
             title: '',
             headerBackTitle: 'Opportunities',
-            headerTransparent: true,
-            headerStyle: { backgroundColor: 'rgba(255,255,255,0.8)' },
-            headerBlurEffect: 'regular',
+            headerStyle: { backgroundColor: colours.bg },
+            headerShadowVisible: false,
           }}
         />
       </Stack>

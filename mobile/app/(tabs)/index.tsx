@@ -6,7 +6,7 @@
 import React, { useState, useMemo, useCallback } from 'react'
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
-  RefreshControl, SafeAreaView,
+  RefreshControl,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useOpportunities } from '../../hooks/useOpportunities'
@@ -125,7 +125,9 @@ export default function OpportunitiesScreen() {
   )
 
   const topProfit = useMemo(() => {
-    const profits = data.map(o => o.true_profit_pence / 100)
+    const profits = data
+      .filter(o => o.opportunity_class !== 'exclude')
+      .map(o => o.true_profit_pence / 100)
     return profits.length > 0 ? Math.max(...profits) : null
   }, [data])
 
@@ -150,6 +152,31 @@ export default function OpportunitiesScreen() {
       (old ?? []).filter(o => o.id !== id)
     )
   }, [queryClient])
+
+  // ListHeaderComponent — scrolls with the list
+  const ListHeader = useMemo(() => (
+    <View>
+      {/* Page title */}
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+        <View>
+          <Text style={styles.title} allowFontScaling={false}>Flipper</Text>
+          <Text style={styles.subtitle} allowFontScaling={false}>UK car flipping, simplified</Text>
+        </View>
+        <TouchableOpacity activeOpacity={0.7}>
+          <Ionicons name="notifications-outline" size={24} color={colours.black} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Hero — always shows totals, never filtered */}
+      <FeedHero opportunityCount={opportunityCount} topProfit={topProfit} />
+
+      {/* Filter bar */}
+      <FilterBar selected={filter} onSelect={setFilter} />
+
+      {/* Spacer below filters */}
+      <View style={{ height: 8 }} />
+    </View>
+  ), [opportunityCount, topProfit, filter, insets.top])
 
   const emptyComponent = useMemo(() => {
     if (isLoading) return null
@@ -176,22 +203,7 @@ export default function OpportunitiesScreen() {
   }, [isLoading, data.length, filtered.length, filter, error])
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title} allowFontScaling={false}>Flipper</Text>
-          <Text style={styles.subtitle} allowFontScaling={false}>UK car flipping, simplified</Text>
-        </View>
-        <TouchableOpacity activeOpacity={0.7}>
-          <Ionicons name="notifications-outline" size={24} color={colours.black} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Hero — above filters, always shows total count across ALL opps */}
-      <FeedHero opportunityCount={opportunityCount} topProfit={topProfit} />
-
-      <FilterBar selected={filter} onSelect={setFilter} />
-
+    <View style={styles.container}>
       <FlatList
         data={filtered}
         keyExtractor={item => item.id}
@@ -202,9 +214,11 @@ export default function OpportunitiesScreen() {
             onDismiss={handleDismiss}
           />
         )}
+        ListHeaderComponent={ListHeader}
+        ListEmptyComponent={emptyComponent}
         contentContainerStyle={[
-          filtered.length === 0 ? styles.emptyContainer : styles.list,
-          { paddingBottom: insets.bottom + 90 },
+          styles.listContent,
+          { paddingBottom: insets.bottom + 88 },
         ]}
         refreshControl={
           <RefreshControl
@@ -213,9 +227,9 @@ export default function OpportunitiesScreen() {
             tintColor={colours.green}
           />
         }
-        ListEmptyComponent={emptyComponent}
+        showsVerticalScrollIndicator={false}
       />
-    </SafeAreaView>
+    </View>
   )
 }
 
@@ -229,9 +243,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 16,
     paddingBottom: 8,
-    backgroundColor: colours.bg,
   },
   title: {
     fontSize: 28,
@@ -244,10 +256,7 @@ const styles = StyleSheet.create({
     color: 'rgba(60,60,67,0.50)',
     marginTop: 2,
   },
-  list: {
-    paddingTop: 8,
-  },
-  emptyContainer: {
-    flexGrow: 1,
+  listContent: {
+    // No paddingHorizontal here — OpportunityCard has marginHorizontal: 16 already
   },
 })
