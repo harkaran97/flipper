@@ -88,7 +88,13 @@ export const OpportunityCard: React.FC<Props> = ({ opportunity }) => {
           <View style={styles.topRow}>
             <CarLogo make={make} size={40} />
             <Text style={styles.carName} numberOfLines={1} allowFontScaling={true}>
-              {make} {model} {year ?? ''}
+              {(() => {
+                const displayYear = year && year > 1900 ? ` ${year}` : ''
+                const displayModel = model.toLowerCase().startsWith(make.toLowerCase())
+                  ? model
+                  : `${make} ${model}`
+                return `${displayModel}${displayYear}`
+              })()}
             </Text>
             <BadgeClass opportunityClass={opportunity_class} />
           </View>

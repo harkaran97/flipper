@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Animated,
   ActivityIndicator,
+  Pressable,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLocalSearchParams } from 'expo-router'
@@ -38,6 +39,9 @@ export default function OpportunityDetailScreen() {
   const queryClient = useQueryClient()
   const insets = useSafeAreaInsets()
 
+  // Scroll ref — force top on mount
+  const scrollRef = useRef<ScrollView>(null)
+
   // Button press scale animations
   const primaryScale = useRef(new Animated.Value(1)).current
   const secondaryScale = useRef(new Animated.Value(1)).current
@@ -47,6 +51,11 @@ export default function OpportunityDetailScreen() {
       setIsBuild(builds[id] === 'active_build')
     })
   }, [id])
+
+  useEffect(() => {
+    // Force scroll to top on mount — prevents inheriting scroll position
+    scrollRef.current?.scrollTo({ y: 0, animated: false })
+  }, [])
 
   const handleToggleBuild = async () => {
     if (isBuild) {
@@ -87,8 +96,12 @@ export default function OpportunityDetailScreen() {
   return (
     <View style={styles.root}>
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 160 },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {/* Hero card — car info + profit hero */}
@@ -170,8 +183,17 @@ export default function OpportunityDetailScreen() {
         <View style={{ height: 8 }} />
       </ScrollView>
 
-      {/* Sticky action bar — safe-area aware */}
-      <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+      {/* Floating glass action buttons — above tab bar */}
+      <View
+        style={[
+          styles.floatingActions,
+          { bottom: insets.bottom + 80 },
+        ]}
+      >
+        {/* 1px top light refraction */}
+        <View style={styles.floatingActionsEdge} />
+
+        {/* View on eBay — green filled */}
         <Animated.View style={[styles.buttonWrap, { transform: [{ scale: primaryScale }] }]}>
           <TouchableOpacity
             style={styles.primaryButton}
@@ -183,6 +205,8 @@ export default function OpportunityDetailScreen() {
             <Text style={styles.primaryButtonText}>View on eBay</Text>
           </TouchableOpacity>
         </Animated.View>
+
+        {/* Mark as Build — ghost outline */}
         <Animated.View style={[styles.buttonWrap, { transform: [{ scale: secondaryScale }] }]}>
           <TouchableOpacity
             style={[styles.secondaryButton, isBuild && styles.secondaryButtonActive]}
@@ -212,7 +236,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingTop: 12,
     paddingHorizontal: 16,
-    paddingBottom: 12,
     gap: 12,
   },
   centered: {
@@ -311,39 +334,56 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 8,
   },
-  // Action bar
-  actionBar: {
+  // Floating glass action bar
+  floatingActions: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
     flexDirection: 'row',
     gap: 10,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    backgroundColor: colours.white,
-    borderTopWidth: 0.5,
-    borderTopColor: 'rgba(60,60,67,0.13)',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 28,
+    borderWidth: 0.5,
+    borderColor: 'rgba(60,60,67,0.15)',
+    padding: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  floatingActionsEdge: {
+    position: 'absolute',
+    top: 0,
+    left: 12,
+    right: 12,
+    height: 0.5,
+    backgroundColor: 'rgba(255,255,255,0.6)',
   },
   buttonWrap: {
     flex: 1,
   },
   primaryButton: {
     backgroundColor: colours.green,
-    borderRadius: 100,
-    height: 52,
+    borderRadius: 22,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primaryButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     color: colours.white,
+    letterSpacing: -0.3,
   },
   secondaryButton: {
-    backgroundColor: colours.white,
-    borderRadius: 100,
-    height: 52,
+    backgroundColor: 'transparent',
+    borderRadius: 22,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(60,60,67,0.29)',
+    borderColor: 'rgba(60,60,67,0.22)',
   },
   secondaryButtonActive: {
     backgroundColor: colours.black,
@@ -353,6 +393,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: colours.black,
+    letterSpacing: -0.3,
   },
   secondaryButtonTextActive: {
     color: colours.white,
