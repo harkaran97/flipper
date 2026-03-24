@@ -108,7 +108,7 @@ const heroStyles = StyleSheet.create({
 
 export default function OpportunitiesScreen() {
   console.log('OpportunitiesScreen mounted')
-  const { data = [], isLoading } = useOpportunities()
+  const { data = [], isLoading, error } = useOpportunities()
   const { triggerRefresh, isRefreshing } = useRefresh()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState<FilterValue>('all')
@@ -193,7 +193,10 @@ export default function OpportunitiesScreen() {
         }
         ListEmptyComponent={
           !isLoading ? (
-            <EmptyState variant="feed" subtitle="Scanning eBay now." />
+            <EmptyState
+              variant="feed"
+              subtitle={error ? 'Could not load — pull down to retry.' : 'Scanning eBay now.'}
+            />
           ) : null
         }
       />
