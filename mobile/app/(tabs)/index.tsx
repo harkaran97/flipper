@@ -151,6 +151,30 @@ export default function OpportunitiesScreen() {
     )
   }, [queryClient])
 
+  const emptyComponent = useMemo(() => {
+    if (isLoading) return null
+    if (data.length === 0) {
+      return (
+        <EmptyState
+          icon="📡"
+          title="No opportunities yet"
+          subtitle={error ? 'Could not load — pull down to retry.' : 'The next scan runs at 9AM. Pull down to check for new listings.'}
+        />
+      )
+    }
+    if (filtered.length === 0) {
+      const filterLabel = filter === 'all' ? 'ALL' : filter.replace('_', ' ').toUpperCase()
+      return (
+        <EmptyState
+          icon="🔍"
+          title={`No ${filterLabel} deals right now`}
+          subtitle="Check back after 9AM when the daily scan runs, or try a different filter."
+        />
+      )
+    }
+    return null
+  }, [isLoading, data.length, filtered.length, filter, error])
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -162,6 +186,9 @@ export default function OpportunitiesScreen() {
           <Ionicons name="notifications-outline" size={24} color={colours.black} />
         </TouchableOpacity>
       </View>
+
+      {/* Hero — above filters, always shows total count across ALL opps */}
+      <FeedHero opportunityCount={opportunityCount} topProfit={topProfit} />
 
       <FilterBar selected={filter} onSelect={setFilter} />
 
@@ -179,11 +206,6 @@ export default function OpportunitiesScreen() {
           filtered.length === 0 ? styles.emptyContainer : styles.list,
           { paddingBottom: insets.bottom + 90 },
         ]}
-        ListHeaderComponent={
-          data.length > 0 ? (
-            <FeedHero opportunityCount={opportunityCount} topProfit={topProfit} />
-          ) : null
-        }
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing || isLoading}
@@ -191,14 +213,7 @@ export default function OpportunitiesScreen() {
             tintColor={colours.green}
           />
         }
-        ListEmptyComponent={
-          !isLoading ? (
-            <EmptyState
-              variant="feed"
-              subtitle={error ? 'Could not load — pull down to retry.' : 'Scanning eBay now.'}
-            />
-          ) : null
-        }
+        ListEmptyComponent={emptyComponent}
       />
     </SafeAreaView>
   )

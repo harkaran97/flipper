@@ -16,7 +16,7 @@ import {
   Pressable,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useLocalSearchParams } from 'expo-router'
+import { useLocalSearchParams, Stack } from 'expo-router'
 import { useOpportunityDetail } from '../../hooks/useOpportunityDetail'
 import { DetailHeader } from '../../components/DetailHeader'
 import { FaultRow } from '../../components/FaultRow'
@@ -33,7 +33,7 @@ const CONFIDENCE_COLOUR: Record<string, string> = {
 }
 
 export default function OpportunityDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const { id, source = 'Opportunities' } = useLocalSearchParams<{ id: string; source?: string }>()
   const { data: opportunity, isLoading, isError } = useOpportunityDetail(id)
   const [isBuild, setIsBuild] = useState(false)
   const queryClient = useQueryClient()
@@ -53,8 +53,11 @@ export default function OpportunityDetailScreen() {
   }, [opportunity])
 
   useEffect(() => {
-    // Force scroll to top on mount — prevents inheriting scroll position
-    scrollRef.current?.scrollTo({ y: 0, animated: false })
+    // Force scroll to top on mount — small delay ensures layout is complete
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: false })
+    }, 50)
+    return () => clearTimeout(timer)
   }, [])
 
   const handleToggleBuild = async () => {
@@ -97,12 +100,13 @@ export default function OpportunityDetailScreen() {
 
   return (
     <View style={styles.root}>
+      <Stack.Screen options={{ headerBackTitle: source }} />
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + 160 },
+          { paddingBottom: insets.bottom + 180 },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -189,7 +193,7 @@ export default function OpportunityDetailScreen() {
       <View
         style={[
           styles.floatingActions,
-          { bottom: insets.bottom + 80 },
+          { bottom: insets.bottom + 88 },
         ]}
       >
         {/* 1px top light refraction */}
