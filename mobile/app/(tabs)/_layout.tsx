@@ -1,8 +1,8 @@
 /**
  * Tab bar configuration. Three tabs: Feed, Saved, Builds.
- * Floating dark glass pill — Revolut-style. Labels shown.
- * Active tab: white icon + white label + subtle highlight bg.
- * Inactive: dimmed icons and labels.
+ * Floating light frosted glass pill — Revolut light mode style. Labels shown.
+ * Active tab: black icon + black label + subtle dark highlight bg.
+ * Inactive: dimmed grey icons and labels.
  */
 import React from 'react'
 import { View, Text, Pressable } from 'react-native'
@@ -11,13 +11,17 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 const GLASS_TAB = {
-  bg: 'rgba(20, 20, 22, 0.92)',
-  border: 'rgba(255, 255, 255, 0.10)',
-  activeIcon: '#FFFFFF',
-  inactiveIcon: 'rgba(255,255,255,0.40)',
-  activeLabel: '#FFFFFF',
-  inactiveLabel: 'rgba(255,255,255,0.40)',
-  activeBg: 'rgba(255,255,255,0.12)',
+  // Light frosted glass — NOT black
+  bg: 'rgba(255, 255, 255, 0.82)',       // frosted white
+  border: 'rgba(60, 60, 67, 0.12)',      // iOS separator, very subtle
+  shadow: '#000000',
+  // Icons and labels
+  activeIcon: '#000000',                  // black when active
+  inactiveIcon: 'rgba(60, 60, 67, 0.35)', // dim grey when inactive
+  activeLabel: '#000000',
+  inactiveLabel: 'rgba(60, 60, 67, 0.35)',
+  // Active tab highlight
+  activeBg: 'rgba(0, 0, 0, 0.06)',       // subtle dark tint on white bg
 }
 
 const TABS = [
@@ -63,15 +67,16 @@ function FloatingTabBar({ state, navigation }: any) {
         alignItems: 'center',
         justifyContent: 'space-around',
         paddingHorizontal: 8,
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.35,
-        shadowRadius: 24,
-        elevation: 20,
+        // Soft shadow underneath — key to the floating glass look
+        shadowColor: GLASS_TAB.shadow,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.10,     // lighter than before — glass is subtle
+        shadowRadius: 20,
+        elevation: 12,
         overflow: 'hidden',
       }}
     >
-      {/* Glass refraction top edge */}
+      {/* Top edge highlight — lighter for white glass */}
       <View
         style={{
           position: 'absolute',
@@ -79,7 +84,7 @@ function FloatingTabBar({ state, navigation }: any) {
           left: 16,
           right: 16,
           height: 0.5,
-          backgroundColor: 'rgba(255,255,255,0.14)',
+          backgroundColor: 'rgba(255, 255, 255, 0.90)', // bright top edge = glass feel
         }}
       />
 
