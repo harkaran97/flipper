@@ -4,13 +4,8 @@
  * margin/effort caption, and opportunity class badge.
  * Profit is green (#34C759) for positive, red (#FF3B30) for negative.
  */
-import React, { useEffect } from 'react'
-import { View, Text, StyleSheet } from 'react-native'
-import Animated, {
-  useSharedValue,
-  withSpring,
-  useAnimatedStyle,
-} from 'react-native-reanimated'
+import React, { useEffect, useRef } from 'react'
+import { View, Text, StyleSheet, Animated } from 'react-native'
 import { OpportunityDetail } from '../lib/types'
 import { formatPrice, formatDays } from '../lib/formatters'
 import { CarLogo } from './CarLogo'
@@ -19,8 +14,6 @@ import { colours } from '../constants/colours'
 interface Props {
   opportunity: OpportunityDetail
 }
-
-const SPRING_IN = { damping: 14, stiffness: 280, mass: 0.8 }
 
 // Class badge — amber pill for SPECULATIVE, solid for others
 function ClassBadge({ cls, writeOff }: { cls: string; writeOff: string }) {
@@ -64,18 +57,20 @@ export const DetailHeader: React.FC<Props> = ({ opportunity }) => {
     : `-${formatPrice(Math.abs(true_profit_pence))}`
 
   // Spring entrance animation: scale 0.8 → 1.0, opacity 0 → 1
-  const scale = useSharedValue(0.8)
-  const opacity = useSharedValue(0)
+  const scale = useRef(new Animated.Value(0.8)).current
+  const opacity = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
-    scale.value = withSpring(1, SPRING_IN)
-    opacity.value = withSpring(1, SPRING_IN)
+    Animated.parallel([
+      Animated.spring(scale, { toValue: 1, useNativeDriver: true }),
+      Animated.spring(opacity, { toValue: 1, useNativeDriver: true }),
+    ]).start()
   }, [])
 
-  const profitAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }))
+  const profitAnimStyle = {
+    transform: [{ scale }],
+    opacity,
+  }
 
   const showWriteOff = write_off_category && write_off_category !== 'clean'
 

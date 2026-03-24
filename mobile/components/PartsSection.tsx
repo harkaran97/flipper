@@ -1,25 +1,19 @@
 /**
  * Parts breakdown section for the detail screen.
  * Accordion grouped by fault. Top 2 eBay results per part.
- * Spring animation on expand/collapse using react-native-reanimated.
+ * Accordion grouped by fault — tap header to expand/collapse.
  * eBay URL fix: arrow only shown for valid, non-placeholder URLs.
  */
-import React, { useRef, useState, useCallback } from 'react'
+import React, { useState } from 'react'
 import {
   View,
   Text,
   TouchableOpacity,
   Linking,
   StyleSheet,
-  LayoutChangeEvent,
   Platform,
   UIManager,
 } from 'react-native'
-import Animated, {
-  useSharedValue,
-  withSpring,
-  useAnimatedStyle,
-} from 'react-native-reanimated'
 import { FaultPartsBreakdown, PartResult, SupplierPrice } from '../lib/types'
 import { formatPrice, formatFaultType } from '../lib/formatters'
 import { SupplierLogo } from './SupplierLogo'
@@ -28,8 +22,6 @@ import { colours } from '../constants/colours'
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true)
 }
-
-const SPRING_CFG = { damping: 22, stiffness: 280, mass: 0.9 }
 
 function isValidPartUrl(url: string | null | undefined): boolean {
   if (!url || url.trim() === '') return false
@@ -104,30 +96,10 @@ function FaultAccordionItem({
   initiallyOpen: boolean
 }) {
   const [isOpen, setIsOpen] = useState(initiallyOpen)
-  const heightRef = useRef(0)
-  const measuredRef = useRef(false)
-  // Start at large number if open so content is visible before measurement
-  const animH = useSharedValue(initiallyOpen ? 800 : 0)
-
-  const onContentLayout = useCallback((e: LayoutChangeEvent) => {
-    const h = e.nativeEvent.layout.height
-    if (h === 0 || measuredRef.current) return
-    measuredRef.current = true
-    heightRef.current = h
-    // Snap to exact measured height (no animation — just correct the initial value)
-    animH.value = isOpen ? h : 0
-  }, [isOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = () => {
-    const next = !isOpen
-    setIsOpen(next)
-    animH.value = withSpring(next ? heightRef.current : 0, SPRING_CFG)
+    setIsOpen(prev => !prev)
   }
-
-  const animStyle = useAnimatedStyle(() => ({
-    height: animH.value,
-    overflow: 'hidden',
-  }))
 
   const hasParts = fault.parts.length > 0
   const hasRange = fault.fault_parts_total_min_pence > 0
@@ -146,9 +118,9 @@ function FaultAccordionItem({
         </Text>
       </TouchableOpacity>
 
-      {/* Animated content */}
-      <Animated.View style={animStyle}>
-        <View onLayout={onContentLayout} style={styles.accordionContent}>
+      {/* Expandable content */}
+      {isOpen && (
+        <View style={styles.accordionContent}>
           {!hasParts ? (
             <Text style={styles.noPartsText}>No parts found</Text>
           ) : (
@@ -164,7 +136,7 @@ function FaultAccordionItem({
             </>
           )}
         </View>
-      </Animated.View>
+      )}
     </View>
   )
 }
