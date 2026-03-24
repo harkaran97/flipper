@@ -241,12 +241,18 @@ class EbayListingsAdapter(BaseListingsAdapter):
         return await self._client.get_item(item_id)
 
     async def search_listings(self, query: str, filters: dict) -> list[RawListing]:
-        """Search eBay for spares/repair vehicle listings."""
+        """Search eBay for used vehicle listings — broad fetch, no keyword restriction."""
         postcode = settings.user_postcode
+        min_price = settings.min_price_pence // 100
+        max_price = settings.max_price_pence // 100
         params = {
-            "q": query or "spares or repair",
             "category_ids": "9801",
-            "filter": "maxDeliveryDistance:{80|km},itemLocationCountry:GB",
+            "filter": (
+                f"conditionIds:{{2500|3000|4000|5000|6000|7000}},"
+                f"price:[{min_price}..{max_price}],"
+                f"itemLocationCountry:GB,"
+                f"maxDeliveryDistance:{{80|km}}"
+            ),
             "buyerPostalCode": postcode,
             "sort": "newlyListed",
             "limit": "50",

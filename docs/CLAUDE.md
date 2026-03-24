@@ -61,6 +61,14 @@ You are the senior backend engineer on Flipper, a UK car-flipping opportunity de
 - showsVerticalScrollIndicator={false} on all ScrollViews
 - GestureHandlerRootView must wrap the app root for gesture-handler to work
 
+## Pre-filter rules (do not bypass)
+- Pre-filter logic lives in `listing_prefilter.py` — never inline in ingestion worker
+- Three lists: CAR_PARTS (338 terms), FAULT_SIGNALS, OPPORTUNITY_SIGNALS
+- All terms matched with `\b` word boundary regex — consistent rule, no exceptions
+- Patterns pre-compiled at module load — never compile per listing call
+- `skip_reason` column on listings table tracks filter outcomes (`pre_filter_no_match`)
+- `MIN_PRICE_PENCE=100000`, `MAX_PRICE_PENCE=1500000` set as Railway env vars
+
 ## Cost controls (do not bypass)
 - Claude Haiku ONLY in the pipeline — never Sonnet without explicit approval
 - LinkUp: cache-first, 30-day TTL — never fire if cache has a result

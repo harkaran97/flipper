@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # eBay location filter
     ebay_max_distance_miles: int = 50  # Max distance from user_postcode for eBay listings
 
+    # eBay search price filter (pence)
+    min_price_pence: int = 100000   # £1,000 — set MIN_PRICE_PENCE in Railway
+    max_price_pence: int = 1500000  # £15,000 — set MAX_PRICE_PENCE in Railway
+
     # Parts pricing service
     parts_stub: bool = True           # master override — True forces ALL adapters to stub
     ebay_parts_live: bool = False     # when True AND parts_stub=False, eBay parts runs live
