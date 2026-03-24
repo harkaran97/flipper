@@ -23,7 +23,7 @@ import { FaultRow } from '../../components/FaultRow'
 import { PartsSection } from '../../components/PartsSection'
 import { colours } from '../../constants/colours'
 import { formatPrice, formatDays } from '../../lib/formatters'
-import { markAsBuild, removeFromBuild, getBuildStatuses } from '../../lib/storage'
+import { markAsBuildApi, unmarkAsBuildApi } from '../../lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 
 const CONFIDENCE_COLOUR: Record<string, string> = {
@@ -47,10 +47,10 @@ export default function OpportunityDetailScreen() {
   const secondaryScale = useRef(new Animated.Value(1)).current
 
   useEffect(() => {
-    getBuildStatuses().then(builds => {
-      setIsBuild(builds[id] === 'active_build')
-    })
-  }, [id])
+    if (opportunity) {
+      setIsBuild(opportunity.marked_as_build ?? false)
+    }
+  }, [opportunity])
 
   useEffect(() => {
     // Force scroll to top on mount — prevents inheriting scroll position
@@ -58,13 +58,15 @@ export default function OpportunityDetailScreen() {
   }, [])
 
   const handleToggleBuild = async () => {
-    if (isBuild) {
-      await removeFromBuild(id)
+    const next = !isBuild
+    setIsBuild(next)
+    if (next) {
+      await markAsBuildApi(id)
     } else {
-      await markAsBuild(id)
+      await unmarkAsBuildApi(id)
     }
-    setIsBuild(prev => !prev)
-    queryClient.invalidateQueries({ queryKey: ['opportunities'] })
+    queryClient.invalidateQueries({ queryKey: ['opportunities', 'builds'] })
+    queryClient.invalidateQueries({ queryKey: ['opportunity', id] })
   }
 
   const pressIn = (anim: Animated.Value) =>

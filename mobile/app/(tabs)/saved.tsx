@@ -1,6 +1,6 @@
 /**
- * Saved tab — shows only opportunities the user has swiped to save.
- * Swipe left to remove from saved.
+ * Saved tab — shows opportunities the user has swiped right to save.
+ * Data comes from the backend /opportunities/saved endpoint.
  */
 import React from 'react'
 import { FlatList, StyleSheet, SafeAreaView } from 'react-native'
@@ -22,8 +22,9 @@ export default function SavedScreen() {
         ListEmptyComponent={
           !isLoading ? (
             <EmptyState
-              title="Nothing saved."
-              subtitle="Swipe left on any opportunity to save it."
+              icon="🔖"
+              title="Nothing saved yet"
+              subtitle="Swipe right on a deal to save it for later."
             />
           ) : null
         }

@@ -70,6 +70,8 @@ def _format_card(opp: Opportunity, listing: Listing, vehicle: Vehicle | None) ->
         market_value_confidence=opp.market_value_confidence,
         market_value_comp_count=opp.market_value_comp_count,
         created_at=opp.created_at.isoformat(),
+        saved=opp.saved,
+        marked_as_build=opp.marked_as_build,
     )
 
 
@@ -147,6 +149,78 @@ async def get_opportunities(
         total=total,
         has_more=(offset + limit) < total,
     )
+
+
+@router.get("/opportunities/saved", response_model=OpportunityFeedResponse)
+async def get_saved_opportunities(
+    session: AsyncSession = Depends(get_session),
+) -> OpportunityFeedResponse:
+    """Returns all opportunities the user has saved."""
+    opp_result = await session.execute(
+        select(Opportunity).where(Opportunity.saved == True)  # noqa: E712
+    )
+    opps = opp_result.scalars().all()
+
+    listing_ids = [o.listing_id for o in opps]
+    if listing_ids:
+        listing_result = await session.execute(
+            select(Listing).where(Listing.id.in_(listing_ids))
+        )
+        listings_by_id = {l.id: l for l in listing_result.scalars().all()}
+
+        vehicle_result = await session.execute(
+            select(Vehicle).where(Vehicle.listing_id.in_(listing_ids))
+        )
+        vehicles_by_listing = {v.listing_id: v for v in vehicle_result.scalars().all()}
+    else:
+        listings_by_id = {}
+        vehicles_by_listing = {}
+
+    cards = []
+    for opp in opps:
+        listing = listings_by_id.get(opp.listing_id)
+        vehicle = vehicles_by_listing.get(opp.listing_id)
+        if listing is None:
+            continue
+        cards.append(_format_card(opp, listing, vehicle))
+
+    return OpportunityFeedResponse(opportunities=cards, total=len(cards), has_more=False)
+
+
+@router.get("/opportunities/builds", response_model=OpportunityFeedResponse)
+async def get_build_opportunities(
+    session: AsyncSession = Depends(get_session),
+) -> OpportunityFeedResponse:
+    """Returns all opportunities marked as active builds."""
+    opp_result = await session.execute(
+        select(Opportunity).where(Opportunity.marked_as_build == True)  # noqa: E712
+    )
+    opps = opp_result.scalars().all()
+
+    listing_ids = [o.listing_id for o in opps]
+    if listing_ids:
+        listing_result = await session.execute(
+            select(Listing).where(Listing.id.in_(listing_ids))
+        )
+        listings_by_id = {l.id: l for l in listing_result.scalars().all()}
+
+        vehicle_result = await session.execute(
+            select(Vehicle).where(Vehicle.listing_id.in_(listing_ids))
+        )
+        vehicles_by_listing = {v.listing_id: v for v in vehicle_result.scalars().all()}
+    else:
+        listings_by_id = {}
+        vehicles_by_listing = {}
+
+    cards = []
+    for opp in opps:
+        listing = listings_by_id.get(opp.listing_id)
+        vehicle = vehicles_by_listing.get(opp.listing_id)
+        if listing is None:
+            continue
+        cards.append(_format_card(opp, listing, vehicle))
+
+    return OpportunityFeedResponse(opportunities=cards, total=len(cards), has_more=False)
 
 
 @router.get("/opportunities/{opportunity_id}", response_model=OpportunityDetail)
@@ -296,6 +370,8 @@ async def get_opportunity_detail(
         market_value_confidence=opp.market_value_confidence,
         market_value_comp_count=opp.market_value_comp_count,
         created_at=opp.created_at.isoformat(),
+        saved=opp.saved,
+        marked_as_build=opp.marked_as_build,
         faults=fault_details,
         parts_breakdown=parts_breakdown,
         effort_cost_pence=opp.effort_cost_pence,
@@ -356,3 +432,62 @@ async def _load_suppliers_from_cache(
     except Exception as exc:
         logger.warning("Failed to deserialise parts cache for %s: %s", cache_key, exc)
         return []
+
+
+async def _get_opportunity_or_404(opportunity_id: str, session: AsyncSession) -> Opportunity:
+    """Load an Opportunity by UUID string, raising 404 if not found."""
+    try:
+        import uuid
+        opp_uuid = uuid.UUID(opportunity_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+
+    result = await session.execute(select(Opportunity).where(Opportunity.id == opp_uuid))
+    opp = result.scalar_one_or_none()
+    if opp is None:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    return opp
+
+
+@router.post("/opportunities/{opportunity_id}/save")
+async def save_opportunity(
+    opportunity_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    opp = await _get_opportunity_or_404(opportunity_id, session)
+    opp.saved = True
+    await session.commit()
+    return {"status": "saved"}
+
+
+@router.post("/opportunities/{opportunity_id}/unsave")
+async def unsave_opportunity(
+    opportunity_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    opp = await _get_opportunity_or_404(opportunity_id, session)
+    opp.saved = False
+    await session.commit()
+    return {"status": "unsaved"}
+
+
+@router.post("/opportunities/{opportunity_id}/mark-build")
+async def mark_as_build(
+    opportunity_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    opp = await _get_opportunity_or_404(opportunity_id, session)
+    opp.marked_as_build = True
+    await session.commit()
+    return {"status": "marked_as_build"}
+
+
+@router.post("/opportunities/{opportunity_id}/unmark-build")
+async def unmark_as_build(
+    opportunity_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    opp = await _get_opportunity_or_404(opportunity_id, session)
+    opp.marked_as_build = False
+    await session.commit()
+    return {"status": "unmarked_as_build"}

@@ -1,13 +1,13 @@
 /**
  * Opportunity card shown in the feed list.
  * Displays car name, asking price, profit, days, faults summary, and badges.
- * Supports swipe-left gesture to save/remove via a Touchable reveal.
+ * Swipe right → save (green bookmark). Swipe left → dismiss (red X).
  */
-import React, { useRef, useState } from 'react'
+import React, { useRef } from 'react'
 import {
-  View, Text, StyleSheet, TouchableOpacity,
-  Animated, PanResponder, Dimensions,
+  View, Text, StyleSheet, TouchableOpacity, Animated,
 } from 'react-native'
+import { Swipeable } from 'react-native-gesture-handler'
 import { router } from 'expo-router'
 import { OpportunityCard as Opp } from '../lib/types'
 import { formatPrice, formatProfit, formatDays } from '../lib/formatters'
@@ -15,72 +15,90 @@ import { CarLogo } from './CarLogo'
 import { BadgeClass } from './BadgeClass'
 import { BadgeRisk } from './BadgeRisk'
 import { colours } from '../constants/colours'
-import { toggleSaved } from '../lib/storage'
-import { useQueryClient } from '@tanstack/react-query'
-
-const SWIPE_THRESHOLD = -80
-const SCREEN_WIDTH = Dimensions.get('window').width
 
 interface Props {
   opportunity: Opp
+  onSave?: (id: string) => void
+  onDismiss?: (id: string) => void
 }
 
-export const OpportunityCard: React.FC<Props> = ({ opportunity }) => {
+export const OpportunityCard: React.FC<Props> = ({ opportunity, onSave, onDismiss }) => {
   const {
     id, make, model, year, listing_price_pence, true_profit_pence,
     total_man_days, opportunity_class, risk_level, write_off_category,
-    detected_faults_summary, saved,
+    detected_faults_summary,
   } = opportunity
 
-  const translateX = useRef(new Animated.Value(0)).current
-  const [revealed, setRevealed] = useState(false)
-  const queryClient = useQueryClient()
-
+  const swipeableRef = useRef<Swipeable>(null)
   const showWriteOff = write_off_category && write_off_category !== 'clean'
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, { dx, dy }) =>
-        Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy),
-      onPanResponderMove: (_, { dx }) => {
-        if (dx < 0) translateX.setValue(Math.max(dx, -100))
-      },
-      onPanResponderRelease: (_, { dx }) => {
-        if (dx < SWIPE_THRESHOLD) {
-          Animated.spring(translateX, { toValue: -80, useNativeDriver: true }).start()
-          setRevealed(true)
-        } else {
-          Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start()
-          setRevealed(false)
-        }
-      },
+  const renderLeftActions = (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    if (!onSave) return null
+    const opacity = dragX.interpolate({
+      inputRange: [40, 80],
+      outputRange: [0, 1],
+      extrapolate: 'clamp',
     })
-  ).current
+    const scale = dragX.interpolate({
+      inputRange: [40, 80],
+      outputRange: [0.8, 1],
+      extrapolate: 'clamp',
+    })
+    return (
+      <Animated.View style={[styles.actionContainer, { opacity, transform: [{ scale }] }]}>
+        <View style={[styles.actionCircle, { backgroundColor: '#34C759' }]}>
+          <Text style={styles.actionIcon}>🔖</Text>
+        </View>
+      </Animated.View>
+    )
+  }
 
-  const handleSave = async () => {
-    await toggleSaved(id)
-    Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start()
-    setRevealed(false)
-    queryClient.invalidateQueries({ queryKey: ['opportunities'] })
+  const renderRightActions = (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    if (!onDismiss) return null
+    const opacity = dragX.interpolate({
+      inputRange: [-80, -40],
+      outputRange: [1, 0],
+      extrapolate: 'clamp',
+    })
+    const scale = dragX.interpolate({
+      inputRange: [-80, -40],
+      outputRange: [1, 0.8],
+      extrapolate: 'clamp',
+    })
+    return (
+      <Animated.View style={[styles.actionContainer, { opacity, transform: [{ scale }] }]}>
+        <View style={[styles.actionCircle, { backgroundColor: '#FF3B30' }]}>
+          <Text style={styles.actionIconDismiss}>✕</Text>
+        </View>
+      </Animated.View>
+    )
+  }
+
+  const handleSwipeOpen = (direction: 'left' | 'right') => {
+    if (direction === 'left' && onSave) {
+      onSave(id)
+      swipeableRef.current?.close()
+    } else if (direction === 'right' && onDismiss) {
+      onDismiss(id)
+      swipeableRef.current?.close()
+    }
   }
 
   return (
     <View style={styles.wrapper}>
-      <TouchableOpacity
-        style={[styles.saveAction, { backgroundColor: saved ? colours.danger : colours.black }]}
-        onPress={handleSave}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.saveActionText} allowFontScaling={false}>
-          {saved ? '✕' : '↓'}
-        </Text>
-      </TouchableOpacity>
-
-      <Animated.View
-        style={[styles.card, { transform: [{ translateX }] }]}
-        {...panResponder.panHandlers}
+      <Swipeable
+        ref={swipeableRef}
+        renderLeftActions={renderLeftActions}
+        renderRightActions={renderRightActions}
+        onSwipeableOpen={handleSwipeOpen}
+        leftThreshold={60}
+        rightThreshold={60}
+        friction={2}
+        overshootLeft={false}
+        overshootRight={false}
       >
         <TouchableOpacity
+          style={styles.card}
           onPress={() => router.push(`/opportunity/${id}`)}
           activeOpacity={0.95}
         >
@@ -140,7 +158,7 @@ export const OpportunityCard: React.FC<Props> = ({ opportunity }) => {
             </View>
           </View>
         </TouchableOpacity>
-      </Animated.View>
+      </Swipeable>
     </View>
   )
 }
@@ -149,23 +167,28 @@ const styles = StyleSheet.create({
   wrapper: {
     marginHorizontal: 16,
     marginBottom: 8,
-    overflow: 'hidden',
     borderRadius: 8,
+    overflow: 'hidden',
   },
-  saveAction: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
+  actionContainer: {
     width: 80,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
   },
-  saveActionText: {
-    fontSize: 18,
+  actionCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionIcon: {
+    fontSize: 20,
+  },
+  actionIconDismiss: {
+    color: '#FFF',
+    fontSize: 20,
     fontWeight: '700',
-    color: colours.white,
   },
   card: {
     backgroundColor: colours.bgCard,

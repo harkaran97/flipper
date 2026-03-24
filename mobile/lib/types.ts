@@ -27,8 +27,10 @@ export interface OpportunityCard {
   market_value_confidence: MarketValueConfidence
   market_value_comp_count: number
   created_at: string
+  // User actions (from backend)
+  saved: boolean
+  marked_as_build: boolean
   // local only
-  saved?: boolean
   status?: 'new' | 'saved' | 'active_build'
   detected_faults_summary?: string
 }
