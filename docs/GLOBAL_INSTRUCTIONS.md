@@ -36,3 +36,36 @@ You are the senior backend engineer on Flipper, a UK car-flipping opportunity de
 - Update the Milestone table in `docs/ARCHITECTURE.md`
 - State clearly: what was built, any deviations from spec (with justification), and proposed next step
 - Commit with a clear message: `feat: TASK_XXX — brief description`
+
+## Migration Safety Rules (NON-NEGOTIABLE)
+- NEVER use op.drop_table() on any existing table
+- NEVER use op.drop_column() without explicit written approval
+- NEVER recreate an existing table — only op.add_column(), op.create_index(), or op.create_table() for brand new tables
+- ALWAYS use ADD COLUMN IF NOT EXISTS
+- If any migration touches the opportunities table, flag it before deploying
+- Before writing any migration: check existing columns first with information_schema query
+
+## Hard-won engineering rules (do not regress)
+- Cache keys use EXACT year — never year bands (year // 5 * 5 was removed, do not reintroduce)
+- Always commit to DB BEFORE emitting bus events — never emit before commit
+- Stub/test data must include all dependent rows (Vehicle rows required for listings)
+- Railway requires explicit port config — never use env var interpolation in start commands
+
+## React Native / Expo rules
+- Do NOT install new packages without checking Expo SDK 54 compatibility first
+- Do NOT use react-native-reanimated unless confirmed installed + Babel plugin configured
+- expo-blur and react-native-gesture-handler ship with Expo SDK 54 — safe to use
+- Always useSafeAreaInsets() for bottom padding — floating tab bar is 64px + 12px gap
+- showsVerticalScrollIndicator={false} on all ScrollViews
+- GestureHandlerRootView must wrap the app root for gesture-handler to work
+
+## Cost controls (do not bypass)
+- Claude Haiku ONLY in the pipeline — never Sonnet without explicit approval
+- LinkUp: cache-first, 30-day TTL — never fire if cache has a result
+- eBay Parts: 24hr cache in parts_price_cache table
+- Never add new AI calls without approval
+
+## Production
+- URL: https://flipper-production-dca0.up.railway.app
+- Migrations run automatically via alembic upgrade head on Railway pre-deploy
+- All prices in pence (integers) — never floats, never pounds
