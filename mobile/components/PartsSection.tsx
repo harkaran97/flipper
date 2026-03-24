@@ -152,7 +152,7 @@ export const PartsSection: React.FC<Props> = ({ breakdown }) => {
     <View style={styles.container}>
       {breakdown.map((fault, idx) => (
         <FaultAccordionItem
-          key={fault.fault_type}
+          key={fault.id ?? `${fault.fault_type}-${idx}`}
           fault={fault}
           initiallyOpen={fault.parts.length > 0}
         />

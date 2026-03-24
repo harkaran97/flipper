@@ -17,7 +17,7 @@ export default function SavedScreen() {
       <FlatList
         data={data}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => <OpportunityCard opportunity={item} />}
+        renderItem={({ item }) => <OpportunityCard opportunity={item} source="Saved" />}
         contentContainerStyle={data.length === 0 ? styles.emptyContainer : styles.list}
         ListEmptyComponent={
           !isLoading ? (

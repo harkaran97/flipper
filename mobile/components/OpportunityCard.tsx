@@ -20,9 +20,10 @@ interface Props {
   opportunity: Opp
   onSave?: (id: string) => void
   onDismiss?: (id: string) => void
+  source?: string
 }
 
-export const OpportunityCard: React.FC<Props> = ({ opportunity, onSave, onDismiss }) => {
+export const OpportunityCard: React.FC<Props> = ({ opportunity, onSave, onDismiss, source = 'Opportunities' }) => {
   const {
     id, make, model, year, listing_price_pence, true_profit_pence,
     total_man_days, opportunity_class, risk_level, write_off_category,
@@ -99,7 +100,7 @@ export const OpportunityCard: React.FC<Props> = ({ opportunity, onSave, onDismis
       >
         <TouchableOpacity
           style={styles.card}
-          onPress={() => router.push(`/opportunity/${id}`)}
+          onPress={() => router.push({ pathname: '/opportunity/[id]', params: { id, source } })}
           activeOpacity={0.95}
         >
           {/* Row 1: Logo + Car name + Class badge */}
@@ -195,7 +196,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colours.border,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    alignItems: 'flex-start',
   },
   topRow: {
     flexDirection: 'row',
