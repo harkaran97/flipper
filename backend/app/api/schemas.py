@@ -79,6 +79,10 @@ class OpportunityCard(BaseModel):
 
     created_at: str  # ISO8601
 
+    # User actions
+    saved: bool = False
+    marked_as_build: bool = False
+
 
 class OpportunityDetail(BaseModel):
     # Everything in OpportunityCard
@@ -105,6 +109,10 @@ class OpportunityDetail(BaseModel):
     market_value_confidence: str
     market_value_comp_count: int
     created_at: str
+
+    # User actions
+    saved: bool = False
+    marked_as_build: bool = False
 
     # Detail-only fields
     faults: list[FaultDetail]

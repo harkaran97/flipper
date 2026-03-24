@@ -1,30 +1,30 @@
 /**
  * My Builds tab — shows opportunities marked as active builds.
- * Promoted from detail screen via "Mark as Build" button.
+ * Data comes from the backend /opportunities/builds endpoint.
  */
-import React, { useMemo } from 'react'
+import React from 'react'
 import { FlatList, StyleSheet, SafeAreaView } from 'react-native'
-import { useOpportunities } from '../../hooks/useOpportunities'
+import { useBuildsOpportunities } from '../../hooks/useBuildsOpportunities'
 import { OpportunityCard } from '../../components/OpportunityCard'
 import { EmptyState } from '../../components/EmptyState'
 import { colours } from '../../constants/colours'
 
 export default function BuildsScreen() {
-  const { data = [], isLoading } = useOpportunities()
-  const builds = useMemo(() => data.filter(o => o.status === 'active_build'), [data])
+  const { data = [], isLoading } = useBuildsOpportunities()
 
   return (
     <SafeAreaView style={styles.container}>
       <FlatList
-        data={builds}
+        data={data}
         keyExtractor={item => item.id}
         renderItem={({ item }) => <OpportunityCard opportunity={item} />}
-        contentContainerStyle={builds.length === 0 ? styles.emptyContainer : styles.list}
+        contentContainerStyle={data.length === 0 ? styles.emptyContainer : styles.list}
         ListEmptyComponent={
           !isLoading ? (
             <EmptyState
-              title="No active builds."
-              subtitle="Mark an opportunity as a build to track it here."
+              icon="🔧"
+              title="No builds tracked"
+              subtitle="Tap 'Mark as Build' on an opportunity to track your active projects here."
             />
           ) : null
         }

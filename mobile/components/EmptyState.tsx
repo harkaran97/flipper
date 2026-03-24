@@ -9,11 +9,12 @@ import { colours } from '../constants/colours'
 
 interface Props {
   variant?: 'feed' | 'default'
+  icon?: string
   title?: string
   subtitle?: string
 }
 
-export const EmptyState: React.FC<Props> = ({ variant = 'default', title, subtitle }) => {
+export const EmptyState: React.FC<Props> = ({ variant = 'default', icon, title, subtitle }) => {
   if (variant === 'feed') {
     return (
       <View style={styles.container}>
@@ -28,6 +29,9 @@ export const EmptyState: React.FC<Props> = ({ variant = 'default', title, subtit
 
   return (
     <View style={styles.container}>
+      {icon ? (
+        <Text style={styles.icon} allowFontScaling={false}>{icon}</Text>
+      ) : null}
       {title ? (
         <Text style={styles.title} allowFontScaling={true}>{title}</Text>
       ) : null}
@@ -65,11 +69,17 @@ const styles = StyleSheet.create({
     color: colours.textMuted,
     marginTop: 8,
   },
+  icon: {
+    fontSize: 44,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
   title: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: colours.textPrimary,
     textAlign: 'center',
+    letterSpacing: -0.5,
     marginBottom: 8,
   },
   subtitle: {

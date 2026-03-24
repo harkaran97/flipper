@@ -3,7 +3,7 @@
  * Shows ranked opportunity cards with a filter bar.
  * Pull-to-refresh triggers a backend ingestion cycle.
  */
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   RefreshControl, SafeAreaView,
@@ -17,6 +17,8 @@ import { EmptyState } from '../../components/EmptyState'
 import { colours } from '../../constants/colours'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { saveOpportunity } from '../../lib/api'
+import { OpportunityCard as Opp } from '../../lib/types'
 
 function FeedHero({ opportunityCount, topProfit }: { opportunityCount: number; topProfit: number | null }) {
   return (
@@ -132,6 +134,23 @@ export default function OpportunitiesScreen() {
     queryClient.invalidateQueries({ queryKey: ['opportunities'] })
   }
 
+  const handleSave = useCallback(async (id: string) => {
+    // Optimistic update: mark as saved immediately
+    queryClient.setQueryData(['opportunities'], (old: Opp[] | undefined) =>
+      (old ?? []).map(o => o.id === id ? { ...o, saved: true } : o)
+    )
+    await saveOpportunity(id)
+    // Refresh saved tab
+    queryClient.invalidateQueries({ queryKey: ['opportunities', 'saved'] })
+  }, [queryClient])
+
+  const handleDismiss = useCallback((id: string) => {
+    // Optimistic update: remove from feed immediately
+    queryClient.setQueryData(['opportunities'], (old: Opp[] | undefined) =>
+      (old ?? []).filter(o => o.id !== id)
+    )
+  }, [queryClient])
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -149,7 +168,13 @@ export default function OpportunitiesScreen() {
       <FlatList
         data={filtered}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => <OpportunityCard opportunity={item} />}
+        renderItem={({ item }) => (
+          <OpportunityCard
+            opportunity={item}
+            onSave={handleSave}
+            onDismiss={handleDismiss}
+          />
+        )}
         contentContainerStyle={[
           filtered.length === 0 ? styles.emptyContainer : styles.list,
           { paddingBottom: insets.bottom + 90 },

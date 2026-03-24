@@ -53,6 +53,10 @@ class Opportunity(Base):
         String(30), nullable=False, default="clean"
     )
 
+    # User actions
+    saved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default='false')
+    marked_as_build: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default='false')
+
     # Alert
     alerted: Mapped[bool] = mapped_column(Boolean, default=False)
 
