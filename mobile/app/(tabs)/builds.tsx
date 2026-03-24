@@ -3,7 +3,8 @@
  * Data comes from the backend /opportunities/builds endpoint.
  */
 import React from 'react'
-import { FlatList, StyleSheet, SafeAreaView } from 'react-native'
+import { View, Text, FlatList, StyleSheet } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useBuildsOpportunities } from '../../hooks/useBuildsOpportunities'
 import { OpportunityCard } from '../../components/OpportunityCard'
 import { EmptyState } from '../../components/EmptyState'
@@ -11,14 +12,23 @@ import { colours } from '../../constants/colours'
 
 export default function BuildsScreen() {
   const { data = [], isLoading } = useBuildsOpportunities()
+  const insets = useSafeAreaInsets()
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <FlatList
         data={data}
         keyExtractor={item => item.id}
         renderItem={({ item }) => <OpportunityCard opportunity={item} source="Builds" />}
-        contentContainerStyle={data.length === 0 ? styles.emptyContainer : styles.list}
+        ListHeaderComponent={
+          <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+            <Text style={styles.title}>Builds</Text>
+          </View>
+        }
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: insets.bottom + 88 },
+        ]}
         ListEmptyComponent={
           !isLoading ? (
             <EmptyState
@@ -28,8 +38,9 @@ export default function BuildsScreen() {
             />
           ) : null
         }
+        showsVerticalScrollIndicator={false}
       />
-    </SafeAreaView>
+    </View>
   )
 }
 
@@ -38,11 +49,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colours.bg,
   },
-  list: {
-    paddingTop: 8,
-    paddingBottom: 24,
+  header: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
-  emptyContainer: {
-    flexGrow: 1,
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+    color: colours.black,
   },
+  listContent: {},
 })
