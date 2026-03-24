@@ -61,6 +61,14 @@ You are the senior backend engineer on Flipper, a UK car-flipping opportunity de
 - showsVerticalScrollIndicator={false} on all ScrollViews
 - GestureHandlerRootView must wrap the app root for gesture-handler to work
 
+## Write-off exclusion rules (do not bypass)
+- Write-off exclusion is two-layer: ingestion (localizedAspects) + scoring (write_off_category)
+- `extract_writeoff_from_aspects()` lives in `adapters/ebay/listings.py` — call it after full item fetch
+- `skip_reason='writeoff_declared'` for listings excluded at ingestion via eBay item specifics
+- `unknown_writeoff` is treated as excluded — never surface if we can't confirm clean
+- All write-off categories (`cat_a` through `cat_n`, fire, flood, salvage) are hard-excluded at scoring
+- Clean title vehicles only surface in the app
+
 ## Pre-filter rules (do not bypass)
 - Pre-filter logic lives in `listing_prefilter.py` — never inline in ingestion worker
 - Three lists: CAR_PARTS (338 terms), FAULT_SIGNALS, OPPORTUNITY_SIGNALS

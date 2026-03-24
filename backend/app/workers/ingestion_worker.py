@@ -19,6 +19,7 @@ from app.adapters.ebay.listings import (
     EbayListingsAdapter,
     extract_description,
     extract_vehicle_from_item,
+    extract_writeoff_from_aspects,
 )
 from app.adapters.ebay.stub import EbayStubAdapter
 from app.core.database import AsyncSessionLocal
@@ -108,6 +109,24 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
                     "[INGESTION] Item fetch failed for ebay_id=%s — continuing with summary data only",
                     raw.external_id,
                 )
+
+        # Write-off check: inspect localizedAspects from full item data before
+        # spending any further pipeline budget on this listing.
+        if full_item is not None:
+            localized_aspects = full_item.get('localizedAspects', [])
+            writeoff = extract_writeoff_from_aspects(localized_aspects)
+            if writeoff:
+                logger.info(
+                    "[INGESTION] Excluding listing %s — "
+                    "write-off declared in item specifics: '%s'",
+                    raw.external_id, writeoff,
+                )
+                listing.skip_reason = 'writeoff_declared'
+                listing.processed = True
+                session.add(listing)
+                await session.commit()
+                stats["skipped"] += 1
+                continue
 
         # Two-tier pre-filter: match title + description before spending AI budget
         passes = should_process_listing(listing.title, listing.description or "")

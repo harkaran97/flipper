@@ -29,6 +29,43 @@ _UK_CAR_MAKES = [
 _MAKE_ALIASES = {"VW": "Volkswagen"}
 
 
+WRITEOFF_ASPECT_NAMES = {
+    "insurance write-off category",
+    "write-off category",
+    "insurance category",
+    "salvage category",
+}
+
+WRITEOFF_ASPECT_VALUES_EXCLUDE = {
+    "cat a", "cat b", "cat c", "cat d",
+    "cat s", "cat n",
+    "category a", "category b", "category c", "category d",
+    "category s", "category n",
+    "a", "b", "c", "d", "s", "n",  # shorthand values some sellers use
+}
+
+
+def extract_writeoff_from_aspects(localized_aspects: list) -> str | None:
+    """
+    Returns the write-off category string if declared in eBay item specifics.
+    Returns None if no write-off aspect found (assume clean).
+    """
+    if not localized_aspects:
+        return None
+
+    for aspect in localized_aspects:
+        name = aspect.get('name', '').lower().strip()
+        value = aspect.get('value', '').lower().strip()
+
+        if name in WRITEOFF_ASPECT_NAMES:
+            if value in WRITEOFF_ASPECT_VALUES_EXCLUDE:
+                return value  # declared write-off — exclude
+            if value in ('none', 'no', 'clean', 'not a write-off', ''):
+                return None   # explicitly clean
+
+    return None  # aspect not present — assume clean, keyword check handles the rest
+
+
 class _HTMLStripper(HTMLParser):
     """Simple HTML tag stripper for seller descriptions."""
 
