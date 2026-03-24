@@ -86,8 +86,12 @@ def classify_opportunity(
     Canonical opportunity classification.
     Order of evaluation matters — check EXCLUDE conditions first.
     """
-    # 1. Hard excludes — never surface these
-    if write_off_category in ("cat_a", "cat_b"):
+    # 1. Hard excludes — never surface write-offs or unknowns
+    _WRITEOFF_EXCLUDE = {
+        'cat_a', 'cat_b', 'cat_c', 'cat_d', 'cat_s', 'cat_n',
+        'fire', 'flood', 'salvage', 'unknown_writeoff',
+    }
+    if write_off_category in _WRITEOFF_EXCLUDE:
         return OpportunityClass.EXCLUDE
 
     # Insufficient market value data — valuation unreliable
@@ -293,7 +297,16 @@ async def score_opportunity(
         market_value_pence=market_value.median_value_pence,
         comp_count=market_value.comp_count,
     )
-    if opportunity_class == OpportunityClass.EXCLUDE and (
+    _WRITEOFF_EXCLUDE = {
+        'cat_a', 'cat_b', 'cat_c', 'cat_d', 'cat_s', 'cat_n',
+        'fire', 'flood', 'salvage', 'unknown_writeoff',
+    }
+    if opportunity_class == OpportunityClass.EXCLUDE and write_off_category in _WRITEOFF_EXCLUDE:
+        logger.info(
+            "[SCORING] Excluded listing %s — write-off category: %s",
+            listing_id, write_off_category,
+        )
+    elif opportunity_class == OpportunityClass.EXCLUDE and (
         market_value.median_value_pence == 0
         or market_value.comp_count == 0
         or (market_value.confidence == "low" and market_value.comp_count < 3)
