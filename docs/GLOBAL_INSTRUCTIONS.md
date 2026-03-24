@@ -36,6 +36,7 @@ You are the senior backend engineer on Flipper, a UK car-flipping opportunity de
 - Update the Milestone table in `docs/ARCHITECTURE.md`
 - State clearly: what was built, any deviations from spec (with justification), and proposed next step
 - Commit with a clear message: `feat: TASK_XXX — brief description`
+- If the task established a new rule, pattern, or hard-won fix — add it to GLOBAL_INSTRUCTIONS.md under the relevant section
 
 ## Migration Safety Rules (NON-NEGOTIABLE)
 - NEVER use op.drop_table() on any existing table
@@ -69,3 +70,10 @@ You are the senior backend engineer on Flipper, a UK car-flipping opportunity de
 - URL: https://flipper-production-dca0.up.railway.app
 - Migrations run automatically via alembic upgrade head on Railway pre-deploy
 - All prices in pence (integers) — never floats, never pounds
+
+## Updating GLOBAL_INSTRUCTIONS.md
+- After every task, ask yourself: did this task reveal a rule that should never be broken again?
+- If yes — add it to GLOBAL_INSTRUCTIONS.md in the relevant section before closing the task
+- Examples of things that must be added: new architectural decisions, bugs caused by missing rules, patterns established for the first time, cost control decisions
+- Commit the update in the same commit as the task: `feat: TASK_XXX — description + update GLOBAL_INSTRUCTIONS`
+- Never let a hard-won lesson stay only in your context window — it must be written down
