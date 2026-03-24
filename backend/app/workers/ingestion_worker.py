@@ -1,11 +1,11 @@
 """
 Ingestion Worker
 
-Polls eBay for new spares/repair listings on a fixed interval.
+Polls eBay for new vehicle listings on a fixed interval (broad fetch, no keyword query).
 Deduplicates against the database.
-Applies keyword pre-filter.
-Stores new listings.
-Emits NEW_LISTING_FOUND events.
+Stores all new listings, then applies two-tier pre-filter on title + full description.
+Listings passing pre-filter emit NEW_LISTING_FOUND events.
+Listings failing pre-filter are stored with skip_reason='pre_filter_no_match'.
 """
 
 import asyncio
@@ -26,6 +26,7 @@ from app.events.bus import EventBus
 from app.events.types import Event, EventType
 from app.models.listing import Listing
 from app.models.vehicle import Vehicle
+from app.services.listing_prefilter import should_process_listing
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -33,24 +34,12 @@ logger = logging.getLogger(__name__)
 # Shared state for health endpoint
 last_poll_time: datetime | None = None
 
-OPPORTUNITY_KEYWORDS = [
-    "spares", "repair", "non-runner", "non runner", "fault", "issue",
-    "damage", "blown", "seized", "knocking", "smoking", "misfire",
-    "gearbox", "clutch", "timing", "needs work", "project", "salvage",
-]
-
 
 def get_listings_adapter():
     """Returns stub or live adapter based on config."""
     if settings.ebay_stub:
         return EbayStubAdapter()
     return EbayListingsAdapter()
-
-
-def passes_keyword_filter(listing: RawListing) -> bool:
-    """Returns True if listing title or description contains at least one keyword."""
-    text = f"{listing.title} {listing.description}".lower()
-    return any(keyword in text for keyword in OPPORTUNITY_KEYWORDS)
 
 
 async def is_duplicate(session, external_id: str, source: str) -> bool:
@@ -67,29 +56,24 @@ async def is_duplicate(session, external_id: str, source: str) -> bool:
 async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
     """
     Single poll cycle:
-    1. Fetch listings from adapter
+    1. Fetch listings from adapter (broad, no keyword query)
     2. For each listing:
        a. Check duplicate — skip if seen
-       b. Apply keyword filter — skip if no match
-       c. Store in DB
-       d. Fetch full item data (live eBay only) to enrich vehicle + description
-       e. Emit NEW_LISTING_FOUND event
+       b. Store in DB
+       c. Fetch full item data (live eBay only) to enrich vehicle + description
+       d. Apply two-tier pre-filter on title + full description
+       e. Fail pre-filter → mark processed with skip_reason, commit, continue
+       f. Pass pre-filter → seed Vehicle row, commit, emit NEW_LISTING_FOUND
     Returns: dict with counts for logging
     """
-    stats = {"fetched": 0, "duplicates": 0, "filtered": 0, "stored": 0}
+    stats = {"fetched": 0, "duplicates": 0, "passed": 0, "skipped": 0}
 
-    raw_listings = await adapter.search_listings(
-        query="spares or repair", filters={}
-    )
+    raw_listings = await adapter.search_listings(query="", filters={})
     stats["fetched"] = len(raw_listings)
 
     for raw in raw_listings:
         if await is_duplicate(session, raw.external_id, raw.source):
             stats["duplicates"] += 1
-            continue
-
-        if not passes_keyword_filter(raw):
-            stats["filtered"] += 1
             continue
 
         listing = Listing(
@@ -125,6 +109,22 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
                     raw.external_id,
                 )
 
+        # Two-tier pre-filter: match title + description before spending AI budget
+        passes = should_process_listing(listing.title, listing.description or "")
+        logger.info(
+            "[PRE-FILTER] listing=%s title='%s' result=%s",
+            raw.external_id,
+            listing.title[:60],
+            "PASS" if passes else "SKIP",
+        )
+
+        if not passes:
+            listing.processed = True
+            listing.skip_reason = "pre_filter_no_match"
+            await session.commit()
+            stats["skipped"] += 1
+            continue
+
         # Seed a Vehicle row from stub data (stub adapter) or from eBay item
         # specifics / title heuristics (real eBay adapter).
         stub_vehicles: dict = getattr(adapter, "STUB_VEHICLE_DATA", {})
@@ -151,7 +151,18 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
                 "postcode": listing.postcode,
             },
         ))
-        stats["stored"] += 1
+        stats["passed"] += 1
+
+    total = stats["passed"] + stats["skipped"]
+    if total > 0:
+        pass_rate = stats["passed"] / total * 100
+        logger.info(
+            "[PRE-FILTER SUMMARY] fetched=%d passed=%d skipped=%d pass_rate=%.1f%%",
+            stats["fetched"],
+            stats["passed"],
+            stats["skipped"],
+            pass_rate,
+        )
 
     return stats
 
