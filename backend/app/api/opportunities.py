@@ -345,6 +345,7 @@ async def get_opportunity_detail(
     )
     market_value = mv_result.scalar_one_or_none()
     linkup_fallback_used = market_value.linkup_fallback_used if market_value else False
+    sold_comp_urls = (market_value.sold_comp_urls or []) if market_value else []
 
     return OpportunityDetail(
         id=str(opp.id),
@@ -377,6 +378,7 @@ async def get_opportunity_detail(
         effort_cost_pence=opp.effort_cost_pence,
         day_rate_pence=opp.day_rate_pence,
         linkup_fallback_used=linkup_fallback_used,
+        sold_comp_urls=sold_comp_urls,
     )
 
 

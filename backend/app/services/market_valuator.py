@@ -343,6 +343,7 @@ async def estimate_market_value(
         logger.error("eBay sold comps fetch failed for listing %s", listing_id, exc_info=True)
         sold_comps = []
 
+    comp_urls = [comp.url for comp in sold_comps if comp.url]
     raw_prices = [comp.sold_price_pence for comp in sold_comps]
     prices = [p for p in raw_prices if p > 0]
     if len(prices) < len(raw_prices):
@@ -449,6 +450,7 @@ async def estimate_market_value(
         source=source,
         confidence=confidence.value,
         linkup_fallback_used=linkup_fallback_used,
+        sold_comp_urls=comp_urls,
     )
     session.add(market_value)
     await session.commit()

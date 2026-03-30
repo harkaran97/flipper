@@ -7,7 +7,7 @@ derived from sold comps (eBay sold or LinkUp fallback).
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,6 +30,7 @@ class MarketValue(Base):
     source: Mapped[str] = mapped_column(String(30), nullable=False)
     confidence: Mapped[str] = mapped_column(String(10), nullable=False)
     linkup_fallback_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    sold_comp_urls: Mapped[list] = mapped_column(JSON, nullable=True, default=list)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     def __repr__(self) -> str:
