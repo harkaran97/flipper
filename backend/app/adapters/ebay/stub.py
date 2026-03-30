@@ -109,6 +109,7 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
                 year=year,
                 make=make,
                 model=model,
+                url="https://www.ebay.co.uk/itm/sold_stub_001",
             ),
             SoldListing(
                 title="BMW 320d M Sport cat n",
@@ -116,6 +117,7 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
                 year=year,
                 make=make,
                 model=model,
+                url="https://www.ebay.co.uk/itm/sold_stub_002",
             ),
             SoldListing(
                 title="BMW 320d ES spares",
@@ -123,6 +125,7 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
                 year=year,
                 make=make,
                 model=model,
+                url="https://www.ebay.co.uk/itm/sold_stub_003",
             ),
             SoldListing(
                 title="BMW 320d 2010 repair",
@@ -130,6 +133,7 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
                 year=year,
                 make=make,
                 model=model,
+                url="https://www.ebay.co.uk/itm/sold_stub_004",
             ),
             SoldListing(
                 title="BMW 320d non runner sold",
@@ -137,6 +141,7 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
                 year=year,
                 make=make,
                 model=model,
+                url="https://www.ebay.co.uk/itm/sold_stub_005",
             ),
         ]
 

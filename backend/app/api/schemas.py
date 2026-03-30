@@ -120,6 +120,7 @@ class OpportunityDetail(BaseModel):
     effort_cost_pence: int
     day_rate_pence: int
     linkup_fallback_used: bool
+    sold_comp_urls: list[str] = []
 
 
 class OpportunityFeedResponse(BaseModel):

@@ -21,6 +21,7 @@ class SoldListing:
     year: int
     make: str
     model: str
+    url: str = ""
 
 
 @dataclass

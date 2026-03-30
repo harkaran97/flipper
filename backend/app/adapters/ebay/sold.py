@@ -66,6 +66,7 @@ class EbaySoldAdapter(BaseSoldAdapter):
                     year=year,
                     make=make,
                     model=model,
+                    url=item.get("itemWebUrl", ""),
                 )
                 listings.append(listing)
             except (KeyError, ValueError) as e:
