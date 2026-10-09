@@ -407,6 +407,7 @@ Take: median of bottom 5 results
 | 10 | Push notifications | 🔲 |
 | 11 | Multi-source parts pricing service (eBay + 4 scrapers, cache, adapter pattern) | ✅ |
 | 39 | Unbreak production: idempotent migration 014, crash-proof scheduler, 14-day feed window, honest /health | ✅ |
+| 40 | Correct and complete data: parts listings, inferred year, scorer guards, price band, display fields (photos, town, distance, fix cost) | ✅ |
 
 ---
 
@@ -450,4 +451,4 @@ ALERT_DISTANCE_MILES=50
 
 ---
 
-*Last updated: Milestone 39 — Production unbroken (missing column, dead scheduler, stale feed)*
+*Last updated: Milestone 40 — Correct and complete data*

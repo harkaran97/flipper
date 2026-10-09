@@ -17,6 +17,7 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
             "make": "BMW",
             "model": "320d",
             "year": 2015,
+            "mileage": 95000,
             "engine_cc": 1995,
             "fuel_type": "diesel",
             "transmission": "manual",
@@ -26,6 +27,7 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
             "make": "Ford",
             "model": "Focus",
             "year": 2018,
+            "mileage": 62000,
             "engine_cc": 999,
             "fuel_type": "petrol",
             "transmission": "manual",
@@ -35,6 +37,7 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
             "make": "Volkswagen",
             "model": "Golf",
             "year": 2016,
+            "mileage": 78000,
             "engine_cc": 1598,
             "fuel_type": "diesel",
             "transmission": "manual",
@@ -66,7 +69,20 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
                 price_pence=275000,
                 postcode="B15 2TT",
                 url="https://www.ebay.co.uk/itm/stub001",
-                raw_json={"stub": True, "item_id": "ebay_stub_001"},
+                raw_json={
+                    "stub": True,
+                    "item_id": "ebay_stub_001",
+                    "image": {"imageUrl": "https://i.ebayimg.com/images/g/stub001/s-l225.jpg"},
+                    "additionalImages": [
+                        {"imageUrl": "https://i.ebayimg.com/images/g/stub0011/s-l225.jpg"},
+                    ],
+                    "itemLocation": {"city": "Birmingham", "postalCode": "B15****", "country": "GB"},
+                    "itemCreationDate": "2026-10-09T07:12:00.000Z",
+                    "localizedAspects": [
+                        {"name": "Year", "value": "2015"},
+                        {"name": "Mileage", "value": "95000"},
+                    ],
+                },
             ),
             RawListing(
                 external_id="ebay_stub_002",
@@ -80,7 +96,20 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
                 price_pence=185000,
                 postcode="M4 1HQ",
                 url="https://www.ebay.co.uk/itm/stub002",
-                raw_json={"stub": True, "item_id": "ebay_stub_002"},
+                raw_json={
+                    "stub": True,
+                    "item_id": "ebay_stub_002",
+                    "image": {"imageUrl": "https://i.ebayimg.com/images/g/stub002/s-l225.jpg"},
+                    "additionalImages": [
+                        {"imageUrl": "https://i.ebayimg.com/images/g/stub0021/s-l225.jpg"},
+                    ],
+                    "itemLocation": {"city": "Manchester", "postalCode": "M4****", "country": "GB"},
+                    "itemCreationDate": "2026-10-08T18:40:00.000Z",
+                    "localizedAspects": [
+                        {"name": "Year", "value": "2018"},
+                        {"name": "Mileage", "value": "62000"},
+                    ],
+                },
             ),
             RawListing(
                 external_id="ebay_stub_003",
@@ -95,7 +124,50 @@ class EbayStubAdapter(BaseListingsAdapter, BaseSoldAdapter, BasePartsAdapter):
                 price_pence=320000,
                 postcode="LS1 4AP",
                 url="https://www.ebay.co.uk/itm/stub003",
-                raw_json={"stub": True, "item_id": "ebay_stub_003"},
+                raw_json={
+                    "stub": True,
+                    "item_id": "ebay_stub_003",
+                    "image": {"imageUrl": "https://i.ebayimg.com/images/g/stub003/s-l225.jpg"},
+                    "additionalImages": [
+                        {"imageUrl": "https://i.ebayimg.com/images/g/stub0031/s-l225.jpg"},
+                    ],
+                    "itemLocation": {"city": "Leeds", "postalCode": "LS1****", "country": "GB"},
+                    "itemCreationDate": "2026-10-09T05:55:00.000Z",
+                    "localizedAspects": [
+                        {"name": "Year", "value": "2016"},
+                        {"name": "Mileage", "value": "78000"},
+                    ],
+                },
+            ),
+            # Parts listing, priced below the band — dropped before storing.
+            RawListing(
+                external_id="ebay_stub_004",
+                source="ebay",
+                title="vw golf r mk7.5 wing",
+                description="Genuine nearside front wing off a 2018 Golf R. Small dent, needs paint.",
+                price_pence=15000,
+                postcode="LE1****",
+                url="https://www.ebay.co.uk/itm/stub004",
+                raw_json={"stub": True, "item_id": "ebay_stub_004", "localizedAspects": []},
+            ),
+            # Parts listing inside the band, no year or mileage specifics —
+            # skipped with skip_reason='not_whole_vehicle'.
+            RawListing(
+                external_id="ebay_stub_005",
+                source="ebay",
+                title="BMW 320d F30 complete front end bonnet bumper headlights rad pack",
+                description="Complete front end off a 2014 F30. Bonnet, bumper, both headlights, radiator pack.",
+                price_pence=120000,
+                postcode="CV1****",
+                url="https://www.ebay.co.uk/itm/stub005",
+                raw_json={
+                    "stub": True,
+                    "item_id": "ebay_stub_005",
+                    "image": {"imageUrl": "https://i.ebayimg.com/images/g/stub005/s-l225.jpg"},
+                    "itemLocation": {"city": "Coventry", "postalCode": "CV1****", "country": "GB"},
+                    "itemCreationDate": "2026-10-09T08:01:00.000Z",
+                    "localizedAspects": [{"name": "Brand", "value": "BMW"}],
+                },
             ),
         ]
 

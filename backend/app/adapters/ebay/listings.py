@@ -8,6 +8,7 @@ Only used when EBAY_STUB=false.
 
 import logging
 import re
+from datetime import datetime, timezone
 from html.parser import HTMLParser
 
 from app.adapters.base import BaseListingsAdapter, RawListing
@@ -64,6 +65,73 @@ def extract_writeoff_from_aspects(localized_aspects: list) -> str | None:
                 return None   # explicitly clean
 
     return None  # aspect not present — assume clean, keyword check handles the rest
+
+
+_YEAR_ASPECT_NAMES = {"year", "registration year"}
+_MILEAGE_ASPECT_NAMES = {"mileage", "vehicle mileage"}
+_MAX_IMAGES = 12
+
+
+def has_vehicle_aspects(localized_aspects: list) -> bool:
+    """
+    True if eBay item specifics carry a year or a mileage aspect.
+
+    Whole cars listed in category 9801 carry these; a miscategorised part
+    (a wing, a bumper) carries neither. Only meaningful on full item data —
+    search summaries have no localizedAspects.
+    """
+    for aspect in localized_aspects or []:
+        name = aspect.get("name", "").lower().strip()
+        value = aspect.get("value", "").strip()
+        if value and (name in _YEAR_ASPECT_NAMES or name in _MILEAGE_ASPECT_NAMES):
+            return True
+    return False
+
+
+def upscale_ebay_image(url: str) -> str:
+    """eBay serves s-l225 thumbnails in search results; request s-l1600."""
+    return re.sub(r"/s-l\d+\.", "/s-l1600.", url)
+
+
+def extract_display_fields(item: dict) -> dict:
+    """
+    Extract fields the app displays from a full item or a search summary.
+
+    Returns image_urls (upscaled, de-duplicated, max 12), location_town
+    (city, else None) and listed_at (aware datetime, else None).
+    """
+    urls: list[str] = []
+    primary = (item.get("image") or {}).get("imageUrl")
+    if primary:
+        urls.append(primary)
+    for extra in item.get("additionalImages") or []:
+        extra_url = (extra or {}).get("imageUrl")
+        if extra_url:
+            urls.append(extra_url)
+    image_urls: list[str] = []
+    for url in urls:
+        big = upscale_ebay_image(url)
+        if big not in image_urls:
+            image_urls.append(big)
+
+    location = item.get("itemLocation") or {}
+    city = (location.get("city") or "").strip()
+
+    listed_at = None
+    created = item.get("itemCreationDate")
+    if created:
+        try:
+            listed_at = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            if listed_at.tzinfo is None:
+                listed_at = listed_at.replace(tzinfo=timezone.utc)
+        except ValueError:
+            logger.warning("[INGESTION] Unparseable itemCreationDate %r", created)
+
+    return {
+        "image_urls": image_urls[:_MAX_IMAGES],
+        "location_town": city.title()[:100] or None,
+        "listed_at": listed_at,
+    }
 
 
 class _HTMLStripper(HTMLParser):
@@ -241,11 +309,14 @@ def _parse_from_title(
     model = existing_model
     year = existing_year
 
-    # Extract year (4-digit, 2000–2025)
+    # Extract year (4-digit, 1980 to next year)
     if not year:
-        m = re.search(r"\b(20(?:0[0-9]|1[0-9]|2[0-5]))\b", title)
-        if m:
-            year = int(m.group(1))
+        max_year = datetime.now(timezone.utc).year + 1
+        for m in re.finditer(r"\b(19[89]\d|20\d{2})\b", title):
+            candidate = int(m.group(1))
+            if candidate <= max_year:
+                year = candidate
+                break
 
     # Extract make from hardcoded list (longest match first to prefer "Land Rover" over "Land")
     if not make:
@@ -287,6 +358,7 @@ class EbayListingsAdapter(BaseListingsAdapter):
             "filter": (
                 f"conditionIds:{{2500|3000|4000|5000|6000|7000}},"
                 f"price:[{min_price}..{max_price}],"
+                f"priceCurrency:GBP,"
                 f"itemLocationCountry:GB,"
                 f"maxDeliveryDistance:{{80|km}}"
             ),

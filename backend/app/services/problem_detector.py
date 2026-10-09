@@ -9,6 +9,7 @@ Calls search_service (LinkUp) only for confirmed novel fault+car combos.
 import logging
 import re
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -325,6 +326,34 @@ async def detect_problems(
         ai_result.get("overall_confidence"),
     )
 
+    # 4b. Not a whole car → stop before any further spend (LinkUp enrichment,
+    # repair estimation, valuation). Commit before returning; nothing is emitted.
+    if ai_result.get("listing_type") == "parts_only":
+        logger.info(
+            "[DETECTOR] Step 4b: Listing %s classified parts_only by AI — skipping: %r",
+            listing_id, listing.title[:60],
+        )
+        listing.skip_reason = "not_whole_vehicle_ai"
+        listing.processed = True
+        await session.commit()
+        return
+
+    # 4c. Persist vehicle fields the AI inferred (only fields that are missing)
+    if vehicle is not None:
+        _apply_inferred_vehicle_fields(vehicle, ai_result.get("vehicle") or {})
+        make, model, year = vehicle.make, vehicle.model, vehicle.year
+
+    # 4d. Year still unknown → cannot value the car; stop before valuation spend
+    if not year:
+        logger.info(
+            "[DETECTOR] Step 4d: Listing %s has no known year after AI inference — skipping",
+            listing_id,
+        )
+        listing.skip_reason = "year_unknown"
+        listing.processed = True
+        await session.commit()
+        return
+
     # 5. Process AI results — store detected faults
     logger.info("[DETECTOR] Step 5: Saving detected faults to DB")
     detected_fault_ids = []
@@ -355,6 +384,8 @@ async def detect_problems(
             confidence=confidence,
             severity=severity,
             source=source,
+            evidence=(fault.get("evidence") or None),
+            explanation=(fault.get("explanation") or None),
         )
         session.add(detected)
         await session.flush()
@@ -467,6 +498,38 @@ async def detect_problems(
         "[DETECTOR] Step 7 OK: PROBLEMS_DETECTED emitted — listing=%s faults=%d write_off=%s",
         listing_id, len(detected_fault_ids), write_off_category.value,
     )
+
+
+_VEHICLE_STR_LIMITS = {"make": 100, "model": 100, "fuel_type": 50, "transmission": 50, "body_type": 100}
+
+
+def _is_missing(value) -> bool:
+    return value is None or value == "" or value == "Unknown" or value == 0
+
+
+def _apply_inferred_vehicle_fields(vehicle: Vehicle, inferred: dict) -> None:
+    """
+    Write AI-inferred fields onto the Vehicle row, only where the current value
+    is missing (None, "Unknown" or 0). Values from eBay item specifics are facts
+    and are never overwritten. Out-of-range values are ignored.
+    """
+    max_year = datetime.now(timezone.utc).year + 1
+
+    year = inferred.get("year")
+    if _is_missing(vehicle.year) and isinstance(year, int) and 1980 <= year <= max_year:
+        vehicle.year = year
+        logger.info("[DETECTOR] Step 4c: Vehicle year set to %d from AI", year)
+
+    mileage = inferred.get("mileage")
+    if _is_missing(vehicle.mileage) and isinstance(mileage, int) and 0 < mileage <= 500000:
+        vehicle.mileage = mileage
+        logger.info("[DETECTOR] Step 4c: Vehicle mileage set to %d from AI", mileage)
+
+    for field, limit in _VEHICLE_STR_LIMITS.items():
+        value = inferred.get(field)
+        if isinstance(value, str) and value.strip() and _is_missing(getattr(vehicle, field)):
+            setattr(vehicle, field, value.strip()[:limit])
+            logger.info("[DETECTOR] Step 4c: Vehicle %s set to %r from AI", field, value.strip()[:limit])
 
 
 def _normalise_severity(value: str | None) -> str | None:

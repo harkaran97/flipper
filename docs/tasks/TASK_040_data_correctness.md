@@ -150,11 +150,11 @@ at INFO with the listing id:
 | Rule | Reason logged |
 |---|---|
 | `year == 0` | `year_unknown` |
-| zero detected faults | `no_faults_detected`. Without a fault there is no repair cost to estimate, so any profit figure is fiction. |
+| zero detected faults, and margin under 40% or low confidence | `no_faults_detected`. See Decisions 2: otherwise capped at `SPECULATIVE`. |
 | `market_value_pence > 10 × listing_price_pence` | `price_implausible`. Likely a part, a typo or a scam. The ratio is configurable as `MAX_VALUE_TO_PRICE_RATIO`, default 10. |
 
-`classify_opportunity` gains `year: int` and `fault_count: int` parameters; pass them from
-`score_opportunity`. Do not change the `Opportunity` model.
+`classify_opportunity` gains keyword-only `year: int` and `fault_count: int` parameters;
+pass them from `score_opportunity`. Do not change the `Opportunity` model.
 
 ### 5. Display fields stored at ingestion (G8)
 
@@ -165,6 +165,7 @@ Add to `Listing` (same migration 015, `ADD COLUMN IF NOT EXISTS`):
 | `image_urls` | `JSON` | `image.imageUrl` + `additionalImages[].imageUrl`, upscaled (below), max 12 |
 | `location_town` | `String(100)` | `itemLocation.city`, else outward code of `itemLocation.postalCode` |
 | `listed_at` | `DateTime(timezone=True)` | `itemCreationDate` |
+| `distance_miles` | `Float` | `location_service` from `itemLocation.postalCode` (Decisions 1) |
 
 **Upscale helper** in `listings.py`:
 
@@ -242,21 +243,27 @@ Stubs must exercise every new path (CLAUDE.md: stub mode always works):
 
 - Number plate capture, history checks (stolen, write-off, finance, mileage): **v2**.
 - Any mobile app change: TASK_041 (behaviour) and TASK_042 (redesign).
-- Distance from your postcode: see open question 1.
 - Rescoring the 136 March rows. The 14-day feed window from TASK_039 hides them.
 
 ---
 
-## Open questions (decide before build)
+## Decisions (9 Oct 2026)
 
-1. **"23 miles away" on cards.** eBay gives only an outward postcode (e.g. "LE4").
-   - **A (recommended):** free outward-code → lat/long lookup via postcodes.io, cached in a
-     small table, haversine distance from `USER_POSTCODE`. That is a new external call, so it
-     gets its own service module per CLAUDE.md.
-   - **B:** town only for now, distance later.
-2. **Zero-fault listings.** This spec excludes them. The alternative is to show them as
-   "Worth checking" with the profit marked as a ceiling. I recommend excluding: the feed
-   should only promise numbers we can back.
+1. **Distance: yes, via postcodes.io.** eBay gives only an outward code such as "LE4".
+   - A new module, `app/services/location_service.py`, looks up the outward code's
+     latitude/longitude on postcodes.io (free, no key) and works out the haversine distance
+     in miles from `USER_POSTCODE`.
+   - Lookups are cached in memory. The result is stored on `listings.distance_miles` at
+     ingestion, so each listing is looked up once.
+   - It uses built-in coordinates whenever `EBAY_STUB=true`: no network in stub mode, and no
+     new env var.
+   - Any failure returns `None` and never blocks ingestion.
+2. **Zero-fault listings: "Worth checking" only when the profit is strong.** With no fault
+   detected, `classify_opportunity` returns `SPECULATIVE` (shown as "Worth checking" in
+   TASK_042) only if margin is at least 40% and market value confidence is high or medium,
+   the same bar as `STRONG`. Otherwise `EXCLUDE`. Such a card is never `STRONG`. The API sends
+   `profit_is_best_case: true` so the app can say the profit assumes nothing else is wrong.
+   This replaces the "zero detected faults" exclude row in step 4.
 
 ---
 

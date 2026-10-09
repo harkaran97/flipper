@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Integer, Text, String
+from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, Text, String
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +24,10 @@ class Listing(Base):
     recent_work_json: Mapped[list] = mapped_column(JSONB, nullable=True)
     processed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     skip_reason: Mapped[str] = mapped_column(String(50), nullable=True)
+    image_urls: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    location_town: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    listed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    distance_miles: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
 
     def __repr__(self) -> str:

@@ -33,6 +33,8 @@ from app.models.market_value import MarketValue
 from app.models.opportunity import Opportunity
 from app.models.repair_estimate import RepairEstimate
 from app.models.user_settings import UserSettings
+from app.models.vehicle import Vehicle
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +73,7 @@ def calculate_true_profit(
     }
 
 
-def classify_opportunity(
+def classify_opportunity_with_reason(
     true_margin_pct: float,
     true_profit_pence: int,
     market_value_confidence: str,
@@ -81,9 +83,12 @@ def classify_opportunity(
     listing_price_pence: int,
     market_value_pence: int,
     comp_count: int = 0,
-) -> OpportunityClass:
+    *,
+    year: int,
+    fault_count: int,
+) -> tuple[OpportunityClass, str | None]:
     """
-    Canonical opportunity classification.
+    Canonical opportunity classification, with the reason for any EXCLUDE.
     Order of evaluation matters — check EXCLUDE conditions first.
     """
     # 1. Hard excludes — never surface write-offs or unknowns
@@ -92,7 +97,11 @@ def classify_opportunity(
         'fire', 'flood', 'salvage', 'unknown_writeoff',
     }
     if write_off_category in _WRITEOFF_EXCLUDE:
-        return OpportunityClass.EXCLUDE
+        return OpportunityClass.EXCLUDE, f"writeoff:{write_off_category}"
+
+    # Unknown year — the valuation compared against cars of any age
+    if not year:
+        return OpportunityClass.EXCLUDE, "year_unknown"
 
     # Insufficient market value data — valuation unreliable
     if (
@@ -100,13 +109,27 @@ def classify_opportunity(
         or comp_count == 0
         or (market_value_confidence == "low" and comp_count < 3)
     ):
-        return OpportunityClass.EXCLUDE
+        return OpportunityClass.EXCLUDE, "insufficient_market_data"
+
+    # Value far above asking price — likely a part, a typo or a scam
+    if (
+        listing_price_pence <= 0
+        or market_value_pence > settings.max_value_to_price_ratio * listing_price_pence
+    ):
+        return OpportunityClass.EXCLUDE, "price_implausible"
 
     if true_profit_pence < 0:
-        return OpportunityClass.EXCLUDE
+        return OpportunityClass.EXCLUDE, "negative_profit"
 
     if true_margin_pct < 5.0:
-        return OpportunityClass.EXCLUDE
+        return OpportunityClass.EXCLUDE, "margin_below_5pct"
+
+    # No fault detected — no repair cost to estimate, so the profit is a best
+    # case. Surface only when it clears the STRONG bar, and never as STRONG.
+    if fault_count == 0:
+        if true_margin_pct >= 40.0 and market_value_confidence in ("high", "medium"):
+            return OpportunityClass.SPECULATIVE, None
+        return OpportunityClass.EXCLUDE, "no_faults_detected"
 
     # 2. Worth a look — vague listings with low confidence + unpriced faults
     if (
@@ -114,7 +137,7 @@ def classify_opportunity(
         and has_unpriced_faults
         and len(vagueness_signals) >= 2
     ):
-        return OpportunityClass.WORTH_A_LOOK
+        return OpportunityClass.WORTH_A_LOOK, None
 
     # 3. Strong — clean data, good margin
     if (
@@ -122,14 +145,19 @@ def classify_opportunity(
         and market_value_confidence in ("high", "medium")
         and not has_unpriced_faults
     ):
-        return OpportunityClass.STRONG
+        return OpportunityClass.STRONG, None
 
     # 4. Speculative — margin present but data incomplete
     if true_margin_pct >= 20.0:
-        return OpportunityClass.SPECULATIVE
+        return OpportunityClass.SPECULATIVE, None
 
     # 5. Everything else with positive margin but below threshold
-    return OpportunityClass.WORTH_A_LOOK
+    return OpportunityClass.WORTH_A_LOOK, None
+
+
+def classify_opportunity(*args, **kwargs) -> OpportunityClass:
+    """Canonical opportunity classification. See classify_opportunity_with_reason."""
+    return classify_opportunity_with_reason(*args, **kwargs)[0]
 
 
 def calculate_risk(
@@ -226,6 +254,12 @@ async def load_opportunity_inputs(
     detected_faults = result.scalars().all()
     vagueness_signals = [f.issue for f in detected_faults if f.confidence < 0.5]
 
+    # Load vehicle (optional — year 0 when missing, which the classifier excludes)
+    result = await session.execute(
+        select(Vehicle).where(Vehicle.listing_id == listing_id)
+    )
+    vehicle = result.scalar_one_or_none()
+
     # Load user settings (single row — fall back to defaults if missing)
     result = await session.execute(select(UserSettings).limit(1))
     user_settings = result.scalar_one_or_none()
@@ -237,6 +271,8 @@ async def load_opportunity_inputs(
         "market_value": market_value,
         "exterior_condition": exterior_condition,
         "vagueness_signals": vagueness_signals,
+        "fault_count": len(detected_faults),
+        "year": vehicle.year if vehicle else 0,
         "day_rate_pence": day_rate_pence,
     }
 
@@ -286,7 +322,7 @@ async def score_opportunity(
     )
 
     # Opportunity classification
-    opportunity_class = classify_opportunity(
+    opportunity_class, exclude_reason = classify_opportunity_with_reason(
         true_margin_pct=profit_result["true_margin_pct"],
         true_profit_pence=profit_result["true_profit_pence"],
         market_value_confidence=market_value.confidence,
@@ -296,24 +332,16 @@ async def score_opportunity(
         listing_price_pence=listing.price_pence,
         market_value_pence=market_value.median_value_pence,
         comp_count=market_value.comp_count,
+        year=inputs["year"],
+        fault_count=inputs["fault_count"],
     )
-    _WRITEOFF_EXCLUDE = {
-        'cat_a', 'cat_b', 'cat_c', 'cat_d', 'cat_s', 'cat_n',
-        'fire', 'flood', 'salvage', 'unknown_writeoff',
-    }
-    if opportunity_class == OpportunityClass.EXCLUDE and write_off_category in _WRITEOFF_EXCLUDE:
+    if opportunity_class == OpportunityClass.EXCLUDE:
         logger.info(
-            "[SCORING] Excluded listing %s — write-off category: %s",
-            listing_id, write_off_category,
-        )
-    elif opportunity_class == OpportunityClass.EXCLUDE and (
-        market_value.median_value_pence == 0
-        or market_value.comp_count == 0
-        or (market_value.confidence == "low" and market_value.comp_count < 3)
-    ):
-        logger.warning(
-            "[SCORER] Excluding listing %s — insufficient market value data (comps=%d, confidence=%s)",
-            listing_id, market_value.comp_count, market_value.confidence,
+            "[SCORER] Excluding listing %s — reason=%s (year=%s faults=%d comps=%d "
+            "confidence=%s value=%dp price=%dp)",
+            listing_id, exclude_reason, inputs["year"], inputs["fault_count"],
+            market_value.comp_count, market_value.confidence,
+            market_value.median_value_pence, listing.price_pence,
         )
 
     # Risk calculation

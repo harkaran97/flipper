@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     min_price_pence: int = 100000   # £1,000 — set MIN_PRICE_PENCE in Railway
     max_price_pence: int = 1500000  # £15,000 — set MAX_PRICE_PENCE in Railway
 
+    # Scoring guard: market value above this multiple of the asking price is
+    # implausible (a part, a typo or a scam) and is excluded.
+    max_value_to_price_ratio: float = 10.0
+
     # Parts pricing service
     parts_stub: bool = True           # master override — True forces ALL adapters to stub
     ebay_parts_live: bool = False     # when True AND parts_stub=False, eBay parts runs live

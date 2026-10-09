@@ -29,7 +29,7 @@ You are the senior backend engineer on Flipper, a UK car-flipping opportunity de
 - Every new module gets a docstring explaining its purpose
 - No commented-out code in commits
 - No print() statements — use the logging module
-- All external calls (eBay, LinkUp, Anthropic) go through their respective service modules only
+- All external calls (eBay, LinkUp, Anthropic, postcodes.io) go through their respective service modules only
 - Stub mode must always work without any live credentials
 
 ## After every task
@@ -37,7 +37,7 @@ You are the senior backend engineer on Flipper, a UK car-flipping opportunity de
 - Update the Milestone table in `docs/ARCHITECTURE.md`
 - State clearly: what was built, any deviations from spec (with justification), and proposed next step
 - Commit with a clear message: `feat: TASK_XXX — brief description`
-- If the task established a new rule, pattern, or hard-won fix — add it to GLOBAL_INSTRUCTIONS.md under the relevant section
+- If the task established a new rule, pattern, or hard-won fix — add it to this file (`docs/CLAUDE.md`) under the relevant section
 
 ## Migration Safety Rules (NON-NEGOTIABLE)
 - NEVER use op.drop_table() on any existing table
@@ -55,6 +55,9 @@ You are the senior backend engineer on Flipper, a UK car-flipping opportunity de
 - Long-running background loops (`asyncio.create_task`) must catch all exceptions inside the loop, including scheduling code — an escaped exception kills the task silently
 - Date arithmetic uses `timedelta`, never `.replace(day=day + 1)`
 - `/health` must only report what it actually measures
+- A prompt that asks the AI to infer a field must have a slot for it in the output schema AND a write-back, or the inference is silently lost (year stayed 0 for months this way)
+- The app never re-derives money figures: the API sends every number the UI shows (`fix_cost_pence` so that market − price − fix == profit exactly)
+- eBay Browse `price:[min..max]` is only applied with `priceCurrency:GBP` alongside it — and ingestion re-checks the band in code
 
 ## React Native / Expo rules
 - Do NOT install new packages without checking Expo SDK 54 compatibility first
@@ -77,7 +80,9 @@ You are the senior backend engineer on Flipper, a UK car-flipping opportunity de
 - Three lists: CAR_PARTS (338 terms), FAULT_SIGNALS, OPPORTUNITY_SIGNALS
 - All terms matched with `\b` word boundary regex — consistent rule, no exceptions
 - Patterns pre-compiled at module load — never compile per listing call
-- `skip_reason` column on listings table tracks filter outcomes (`pre_filter_no_match`)
+- `skip_reason` column on listings table tracks filter outcomes: `writeoff_declared`, `not_whole_vehicle` (no year or mileage item specific), `pre_filter_no_match`, then in detection `not_whole_vehicle_ai` (AI `listing_type=parts_only`) and `year_unknown`
+- Listings outside `MIN_PRICE_PENCE..MAX_PRICE_PENCE` are dropped before storing (counted as `out_of_price_band`)
+- Scoring excludes `year_unknown`, `price_implausible` (value > `MAX_VALUE_TO_PRICE_RATIO` × price, default 10) and `no_faults_detected`; a zero-fault listing that clears the STRONG bar is capped at SPECULATIVE with `profit_is_best_case`
 - `MIN_PRICE_PENCE=100000`, `MAX_PRICE_PENCE=1500000` set as Railway env vars
 
 ## Cost controls (do not bypass)
@@ -91,9 +96,9 @@ You are the senior backend engineer on Flipper, a UK car-flipping opportunity de
 - Migrations run automatically via alembic upgrade head on Railway pre-deploy
 - All prices in pence (integers) — never floats, never pounds
 
-## Updating GLOBAL_INSTRUCTIONS.md
+## Updating this file
 - After every task, ask yourself: did this task reveal a rule that should never be broken again?
-- If yes — add it to GLOBAL_INSTRUCTIONS.md in the relevant section before closing the task
+- If yes — add it to this file in the relevant section before closing the task
 - Examples of things that must be added: new architectural decisions, bugs caused by missing rules, patterns established for the first time, cost control decisions
-- Commit the update in the same commit as the task: `feat: TASK_XXX — description + update GLOBAL_INSTRUCTIONS`
+- Commit the update in the same commit as the task: `feat: TASK_XXX — description + update CLAUDE.md`
 - Never let a hard-won lesson stay only in your context window — it must be written down

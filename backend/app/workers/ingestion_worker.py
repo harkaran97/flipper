@@ -3,9 +3,13 @@ Ingestion Worker
 
 Polls eBay for new vehicle listings on a fixed interval (broad fetch, no keyword query).
 Deduplicates against the database.
-Stores all new listings, then applies two-tier pre-filter on title + full description.
-Listings passing pre-filter emit NEW_LISTING_FOUND events.
-Listings failing pre-filter are stored with skip_reason='pre_filter_no_match'.
+Drops listings outside the configured price band without storing them.
+Stores all other new listings with their display fields (photos, town, listing
+time, distance), then gates them in order:
+  1. write-off declared in item specifics  → skip_reason='writeoff_declared'
+  2. no year or mileage in item specifics  → skip_reason='not_whole_vehicle'
+  3. two-tier pre-filter on title + description → skip_reason='pre_filter_no_match'
+Listings passing every gate emit NEW_LISTING_FOUND events.
 """
 
 import asyncio
@@ -18,8 +22,10 @@ from app.adapters.base import RawListing
 from app.adapters.ebay.listings import (
     EbayListingsAdapter,
     extract_description,
+    extract_display_fields,
     extract_vehicle_from_item,
     extract_writeoff_from_aspects,
+    has_vehicle_aspects,
 )
 from app.adapters.ebay.stub import EbayStubAdapter
 from app.core.database import AsyncSessionLocal
@@ -28,6 +34,7 @@ from app.events.types import Event, EventType
 from app.models.listing import Listing
 from app.models.vehicle import Vehicle
 from app.services.listing_prefilter import should_process_listing
+from app.services.location_service import distance_from_user_miles
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -59,20 +66,36 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
     Single poll cycle:
     1. Fetch listings from adapter (broad, no keyword query)
     2. For each listing:
-       a. Check duplicate — skip if seen
-       b. Store in DB
-       c. Fetch full item data (live eBay only) to enrich vehicle + description
-       d. Apply two-tier pre-filter on title + full description
-       e. Fail pre-filter → mark processed with skip_reason, commit, continue
-       f. Pass pre-filter → seed Vehicle row, commit, emit NEW_LISTING_FOUND
+       a. Outside the price band → drop without storing
+       b. Check duplicate — skip if seen
+       c. Store in DB
+       d. Fetch full item data (live eBay only) to enrich vehicle + description
+       e. Store display fields (photos, town, listing time, distance)
+       f. Gates: write-off declared, not a whole vehicle, pre-filter — each
+          failure marks processed with its skip_reason, commits, continues
+       g. Pass every gate → seed Vehicle row, commit, emit NEW_LISTING_FOUND
     Returns: dict with counts for logging
     """
-    stats = {"fetched": 0, "duplicates": 0, "passed": 0, "skipped": 0}
+    stats = {
+        "fetched": 0, "duplicates": 0, "out_of_price_band": 0,
+        "not_whole_vehicle": 0, "passed": 0, "skipped": 0,
+    }
 
     raw_listings = await adapter.search_listings(query="", filters={})
     stats["fetched"] = len(raw_listings)
 
     for raw in raw_listings:
+        # Price band is enforced here as well as in the eBay query: a listing
+        # outside it was never meant to be fetched, so it is not stored.
+        if not settings.min_price_pence <= raw.price_pence <= settings.max_price_pence:
+            logger.info(
+                "[INGESTION] Dropping listing %s — price %dp outside band %d..%d",
+                raw.external_id, raw.price_pence,
+                settings.min_price_pence, settings.max_price_pence,
+            )
+            stats["out_of_price_band"] += 1
+            continue
+
         if await is_duplicate(session, raw.external_id, raw.source):
             stats["duplicates"] += 1
             continue
@@ -110,6 +133,23 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
                     raw.external_id,
                 )
 
+        # Display fields: prefer full item data, fall back to the search summary.
+        item_data = full_item if full_item is not None else (raw.raw_json or {})
+        display = extract_display_fields(item_data)
+        if not display["image_urls"] and full_item is not None:
+            display["image_urls"] = extract_display_fields(raw.raw_json or {})["image_urls"]
+        listing.image_urls = display["image_urls"]
+        listing.location_town = display["location_town"]
+        listing.listed_at = display["listed_at"]
+        listing.distance_miles = await distance_from_user_miles(raw.postcode)
+        logger.info(
+            "[INGESTION] Display fields for %s (from %s): images=%d town=%r listed_at=%s distance=%s",
+            raw.external_id, "full item" if full_item is not None else "summary",
+            len(listing.image_urls), listing.location_town,
+            listing.listed_at.isoformat() if listing.listed_at else None,
+            listing.distance_miles,
+        )
+
         # Write-off check: inspect localizedAspects from full item data before
         # spending any further pipeline budget on this listing.
         if full_item is not None:
@@ -127,6 +167,22 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
                 await session.commit()
                 stats["skipped"] += 1
                 continue
+
+        # Whole-vehicle check: a miscategorised part carries neither a year nor a
+        # mileage item specific. Only applied where item specifics exist (full
+        # item data, or stub data that includes them) — never on summaries.
+        if "localizedAspects" in item_data and not has_vehicle_aspects(item_data["localizedAspects"]):
+            logger.info(
+                "[INGESTION] Excluding listing %s — no year or mileage in item specifics "
+                "(likely a part, not a car): '%s'",
+                raw.external_id, listing.title[:60],
+            )
+            listing.skip_reason = "not_whole_vehicle"
+            listing.processed = True
+            await session.commit()
+            stats["not_whole_vehicle"] += 1
+            stats["skipped"] += 1
+            continue
 
         # Two-tier pre-filter: match title + description before spending AI budget
         passes = should_process_listing(listing.title, listing.description or "")
@@ -149,10 +205,8 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
         stub_vehicles: dict = getattr(adapter, "STUB_VEHICLE_DATA", {})
         vehicle_data = stub_vehicles.get(raw.external_id)
 
-        if vehicle_data is None and raw.source == "ebay":
-            item_data = full_item if full_item is not None else raw.raw_json
-            if item_data:
-                vehicle_data, _missing = extract_vehicle_from_item(item_data)
+        if vehicle_data is None and raw.source == "ebay" and item_data:
+            vehicle_data, _missing = extract_vehicle_from_item(item_data)
 
         if vehicle_data:
             session.add(Vehicle(listing_id=listing.id, **vehicle_data))
@@ -176,8 +230,11 @@ async def run_poll_cycle(session, adapter, bus: EventBus) -> dict:
     if total > 0:
         pass_rate = stats["passed"] / total * 100
         logger.info(
-            "[PRE-FILTER SUMMARY] fetched=%d passed=%d skipped=%d pass_rate=%.1f%%",
+            "[PRE-FILTER SUMMARY] fetched=%d out_of_price_band=%d not_whole_vehicle=%d "
+            "passed=%d skipped=%d pass_rate=%.1f%%",
             stats["fetched"],
+            stats["out_of_price_band"],
+            stats["not_whole_vehicle"],
             stats["passed"],
             stats["skipped"],
             pass_rate,

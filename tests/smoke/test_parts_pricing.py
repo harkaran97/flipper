@@ -322,17 +322,28 @@ async def test_6_opportunity_detail_includes_parts():
     mock_listing.id = listing_id
     mock_listing.title = "BMW 320d Spares or Repair"
     mock_listing.url = "https://www.ebay.co.uk/itm/test"
+    mock_listing.postcode = "LE4****"
+    mock_listing.raw_json = {}
+    mock_listing.image_urls = ["https://i.ebayimg.com/images/g/test/s-l1600.jpg"]
+    mock_listing.location_town = "Leicester"
+    mock_listing.listed_at = None
+    mock_listing.distance_miles = None
+    mock_listing.created_at = datetime(2026, 10, 9)
 
     mock_vehicle = MagicMock(spec=Vehicle)
     mock_vehicle.listing_id = listing_id
     mock_vehicle.make = "BMW"
     mock_vehicle.model = "320d"
     mock_vehicle.year = 2015
+    mock_vehicle.mileage = 95000
+    mock_vehicle.trim = None
 
     mock_fault = MagicMock(spec=DetectedFault)
     mock_fault.listing_id = listing_id
     mock_fault.issue = "clutch_failure"
     mock_fault.severity = "medium"
+    mock_fault.evidence = "clutch slipping badly"
+    mock_fault.explanation = None
 
     # Use a sequential response queue — the endpoint queries in a fixed order:
     # 1. Opportunity  2. Listing  3. Vehicle  4. DetectedFaults

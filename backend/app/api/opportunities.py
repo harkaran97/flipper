@@ -5,6 +5,7 @@ GET /opportunities  — ranked opportunity feed
 GET /opportunities/{opportunity_id}  — full opportunity detail
 """
 import logging
+import re
 from datetime import timedelta
 from typing import Optional
 
@@ -12,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.adapters.ebay.listings import upscale_ebay_image
 from app.api.deps import get_session
 from app.api.schemas import (
     FaultDetail,
@@ -30,6 +32,7 @@ from app.models.market_value import MarketValue
 from app.models.opportunity import Opportunity
 from app.models.parts_price_cache import PartsPriceCache
 from app.models.vehicle import Vehicle
+from app.services.location_service import outward_code
 from app.services.parts_pricing import PartsPricingService
 from config import settings
 
@@ -46,19 +49,124 @@ OPPORTUNITY_CLASS_ORDER = {
 _parts_pricing_svc = PartsPricingService()
 
 
-def _format_card(opp: Opportunity, listing: Listing, vehicle: Vehicle | None) -> OpportunityCard:
+SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+_MAX_CARD_FAULT_NAMES = 3
+
+
+_ACRONYMS = {
+    "abs", "ac", "cv", "cvt", "dmf", "dpf", "dsg", "ecu", "egr", "eml", "srs", "tpms",
+}
+
+
+def display_fault_name(fault_type: str) -> str:
+    """"timing_chain_failure" → "Timing chain", "dpf_fault" → "DPF"."""
+    words = fault_type.replace("_", " ").strip()
+    words = re.sub(r"\s+(failure|fault|issue|problem)$", "", words, flags=re.IGNORECASE)
+    if not words:
+        return fault_type
+    tokens = [w.upper() if w.lower() in _ACRONYMS else w for w in words.split()]
+    if tokens[0] == tokens[0].lower():
+        tokens[0] = tokens[0][:1].upper() + tokens[0][1:]
+    return " ".join(tokens)
+
+
+def vehicle_display_name(vehicle: Vehicle | None, fallback_title: str) -> str:
+    """
+    "2015 Volkswagen Golf R". Keeps eBay's casing for the model; title-cases it
+    only when it is entirely lower case ("golf" → "Golf", "320d" unchanged).
+    Falls back to the listing title when make or model is unknown.
+    """
+    if vehicle is None or not vehicle.make or vehicle.make == "Unknown" \
+            or not vehicle.model or vehicle.model == "Unknown":
+        return fallback_title
+    model = vehicle.model
+    if model.islower() and not any(ch.isdigit() for ch in model):
+        model = model.title()
+    parts = [str(vehicle.year)] if vehicle.year else []
+    parts.append(vehicle.make)
+    if not model.lower().startswith(vehicle.make.lower()):
+        parts.append(model)
+    else:
+        parts[-1] = model
+    if vehicle.trim and vehicle.trim.lower() not in model.lower():
+        parts.append(vehicle.trim)
+    return " ".join(parts)
+
+
+def listing_image_urls(listing: Listing) -> list[str]:
+    """Stored photos, else the summary image already in raw_json (pre-TASK_040 rows)."""
+    if listing.image_urls:
+        return list(listing.image_urls)
+    raw_image = ((listing.raw_json or {}).get("image") or {}).get("imageUrl")
+    return [upscale_ebay_image(raw_image)] if raw_image else []
+
+
+def listing_location(listing: Listing) -> str | None:
+    """Town, else the outward postcode ("LE4")."""
+    return listing.location_town or outward_code(listing.postcode)
+
+
+def listing_listed_at(listing: Listing) -> str:
+    """When the listing went up on eBay, else when we first saw it."""
+    if listing.listed_at is not None:
+        return listing.listed_at.isoformat()
+    raw_created = (listing.raw_json or {}).get("itemCreationDate")
+    return raw_created or listing.created_at.isoformat()
+
+
+def card_fault_names(faults: list[DetectedFault]) -> list[str]:
+    """Up to three display names, most severe first, without duplicates."""
+    names: list[str] = []
+    for fault in sorted(faults, key=lambda f: SEVERITY_ORDER.get(f.severity, 99)):
+        name = display_fault_name(fault.issue)
+        if name not in names:
+            names.append(name)
+    return names[:_MAX_CARD_FAULT_NAMES]
+
+
+def parts_total_range(parts: list[PartResult]) -> tuple[int, int]:
+    """
+    Totals for a fault's parts: min = sum of the cheapest supplier per part,
+    max = sum of the dearest supplier per part. Parts with no price are skipped.
+    """
+    total_min = 0
+    total_max = 0
+    for part in parts:
+        if not part.suppliers:
+            continue
+        totals = [s.total_cost_pence for s in part.suppliers]
+        total_min += min(totals)
+        total_max += max(totals)
+    return total_min, total_max
+
+
+def _format_card(
+    opp: Opportunity,
+    listing: Listing,
+    vehicle: Vehicle | None,
+    faults: list[DetectedFault],
+) -> OpportunityCard:
     """Assemble an OpportunityCard from ORM rows."""
+    images = listing_image_urls(listing)
     return OpportunityCard(
         id=str(opp.id),
         listing_id=str(opp.listing_id),
         title=listing.title,
         make=vehicle.make if vehicle else "",
         model=vehicle.model if vehicle else "",
-        year=vehicle.year if vehicle else None,
+        year=vehicle.year if vehicle and vehicle.year else None,
         listing_url=listing.url,
+        vehicle_name=vehicle_display_name(vehicle, listing.title),
+        image_url=images[0] if images else None,
+        mileage=vehicle.mileage if vehicle else None,
+        location=listing_location(listing),
+        distance_miles=round(listing.distance_miles) if listing.distance_miles is not None else None,
+        listed_at=listing_listed_at(listing),
+        fault_names=card_fault_names(faults),
         listing_price_pence=opp.listing_price_pence,
         parts_cost_min_pence=opp.parts_cost_min_pence,
         parts_cost_max_pence=opp.parts_cost_max_pence,
+        fix_cost_pence=opp.parts_cost_mid_pence + opp.effort_cost_pence,
         market_value_pence=opp.market_value_pence,
         true_profit_pence=opp.true_profit_pence,
         true_margin_pct=round(opp.true_margin_pct, 2),
@@ -68,12 +176,50 @@ def _format_card(opp: Opportunity, listing: Listing, vehicle: Vehicle | None) ->
         write_off_category=opp.write_off_category,
         has_unpriced_faults=opp.has_unpriced_faults,
         profit_is_floor_estimate=opp.profit_is_floor_estimate,
+        profit_is_best_case=len(faults) == 0,
         market_value_confidence=opp.market_value_confidence,
         market_value_comp_count=opp.market_value_comp_count,
         created_at=opp.created_at.isoformat(),
         saved=opp.saved,
         marked_as_build=opp.marked_as_build,
     )
+
+
+async def _build_cards(session: AsyncSession, opps: list[Opportunity]) -> list[OpportunityCard]:
+    """Batch-load listings, vehicles and faults for these opportunities and format cards."""
+    listing_ids = [o.listing_id for o in opps]
+    if not listing_ids:
+        return []
+
+    listing_result = await session.execute(
+        select(Listing).where(Listing.id.in_(listing_ids))
+    )
+    listings_by_id = {l.id: l for l in listing_result.scalars().all()}
+
+    vehicle_result = await session.execute(
+        select(Vehicle).where(Vehicle.listing_id.in_(listing_ids))
+    )
+    vehicles_by_listing = {v.listing_id: v for v in vehicle_result.scalars().all()}
+
+    fault_result = await session.execute(
+        select(DetectedFault).where(DetectedFault.listing_id.in_(listing_ids))
+    )
+    faults_by_listing: dict = {}
+    for fault in fault_result.scalars().all():
+        faults_by_listing.setdefault(fault.listing_id, []).append(fault)
+
+    cards = []
+    for opp in opps:
+        listing = listings_by_id.get(opp.listing_id)
+        if listing is None:
+            logger.warning("Opportunity %s has no listing row — skipping", opp.id)
+            continue
+        cards.append(_format_card(
+            opp, listing,
+            vehicles_by_listing.get(opp.listing_id),
+            faults_by_listing.get(opp.listing_id, []),
+        ))
+    return cards
 
 
 @router.get("/opportunities", response_model=OpportunityFeedResponse)
@@ -121,30 +267,7 @@ async def get_opportunities(
     # Apply offset and limit after sorting
     page = opps_sorted[offset: offset + limit]
 
-    # Batch-load listings and vehicles for the page
-    listing_ids = [o.listing_id for o in page]
-    if listing_ids:
-        listing_result = await session.execute(
-            select(Listing).where(Listing.id.in_(listing_ids))
-        )
-        listings_by_id = {l.id: l for l in listing_result.scalars().all()}
-
-        vehicle_result = await session.execute(
-            select(Vehicle).where(Vehicle.listing_id.in_(listing_ids))
-        )
-        vehicles_by_listing = {v.listing_id: v for v in vehicle_result.scalars().all()}
-    else:
-        listings_by_id = {}
-        vehicles_by_listing = {}
-
-    cards = []
-    for opp in page:
-        listing = listings_by_id.get(opp.listing_id)
-        vehicle = vehicles_by_listing.get(opp.listing_id)
-        if listing is None:
-            logger.warning("Opportunity %s has no listing row — skipping", opp.id)
-            continue
-        cards.append(_format_card(opp, listing, vehicle))
+    cards = await _build_cards(session, page)
 
     return OpportunityFeedResponse(
         opportunities=cards,
@@ -162,29 +285,7 @@ async def get_saved_opportunities(
         select(Opportunity).where(Opportunity.saved == True)  # noqa: E712
     )
     opps = opp_result.scalars().all()
-
-    listing_ids = [o.listing_id for o in opps]
-    if listing_ids:
-        listing_result = await session.execute(
-            select(Listing).where(Listing.id.in_(listing_ids))
-        )
-        listings_by_id = {l.id: l for l in listing_result.scalars().all()}
-
-        vehicle_result = await session.execute(
-            select(Vehicle).where(Vehicle.listing_id.in_(listing_ids))
-        )
-        vehicles_by_listing = {v.listing_id: v for v in vehicle_result.scalars().all()}
-    else:
-        listings_by_id = {}
-        vehicles_by_listing = {}
-
-    cards = []
-    for opp in opps:
-        listing = listings_by_id.get(opp.listing_id)
-        vehicle = vehicles_by_listing.get(opp.listing_id)
-        if listing is None:
-            continue
-        cards.append(_format_card(opp, listing, vehicle))
+    cards = await _build_cards(session, opps)
 
     return OpportunityFeedResponse(opportunities=cards, total=len(cards), has_more=False)
 
@@ -198,29 +299,7 @@ async def get_build_opportunities(
         select(Opportunity).where(Opportunity.marked_as_build == True)  # noqa: E712
     )
     opps = opp_result.scalars().all()
-
-    listing_ids = [o.listing_id for o in opps]
-    if listing_ids:
-        listing_result = await session.execute(
-            select(Listing).where(Listing.id.in_(listing_ids))
-        )
-        listings_by_id = {l.id: l for l in listing_result.scalars().all()}
-
-        vehicle_result = await session.execute(
-            select(Vehicle).where(Vehicle.listing_id.in_(listing_ids))
-        )
-        vehicles_by_listing = {v.listing_id: v for v in vehicle_result.scalars().all()}
-    else:
-        listings_by_id = {}
-        vehicles_by_listing = {}
-
-    cards = []
-    for opp in opps:
-        listing = listings_by_id.get(opp.listing_id)
-        vehicle = vehicles_by_listing.get(opp.listing_id)
-        if listing is None:
-            continue
-        cards.append(_format_card(opp, listing, vehicle))
+    cards = await _build_cards(session, opps)
 
     return OpportunityFeedResponse(opportunities=cards, total=len(cards), has_more=False)
 
@@ -285,8 +364,11 @@ async def get_opportunity_detail(
         cp = common_problems_by_type.get(fault.issue)
         fault_details.append(FaultDetail(
             fault_type=fault.issue,
+            display_name=display_fault_name(fault.issue),
             severity=fault.severity,
             description=cp.description if cp else None,
+            explanation=fault.explanation,
+            seller_quote=fault.evidence,
             labour_days=cp.labour_days_default if cp else 1.0,
         ))
 
@@ -309,7 +391,6 @@ async def get_opportunity_detail(
         fault_parts = fault_parts_by_type.get(fault_type, [])
 
         part_results: list[PartResult] = []
-        all_prices: list[int] = []
 
         for fp in fault_parts:
             # Attempt to load from parts_price_cache (keyed by part+vehicle)
@@ -319,8 +400,6 @@ async def get_opportunity_detail(
                 vehicle=vehicle,
             )
             cheapest = min((s.total_cost_pence for s in suppliers), default=None)
-            if cheapest is not None:
-                all_prices.append(cheapest)
 
             part_results.append(PartResult(
                 part_name=fp.part_name,
@@ -331,8 +410,7 @@ async def get_opportunity_detail(
                 cheapest_pence=cheapest,
             ))
 
-        fault_parts_total_min = min(all_prices) if all_prices else 0
-        fault_parts_total_max = max(all_prices) if all_prices else 0
+        fault_parts_total_min, fault_parts_total_max = parts_total_range(part_results)
 
         parts_breakdown.append(FaultPartsBreakdown(
             fault_type=fault_type,
@@ -349,32 +427,11 @@ async def get_opportunity_detail(
     linkup_fallback_used = market_value.linkup_fallback_used if market_value else False
     sold_comp_urls = (market_value.sold_comp_urls or []) if market_value else []
 
+    card = _format_card(opp, listing, vehicle, list(detected_faults))
     return OpportunityDetail(
-        id=str(opp.id),
-        listing_id=str(opp.listing_id),
-        title=listing.title,
-        make=vehicle.make if vehicle else "",
-        model=vehicle.model if vehicle else "",
-        year=vehicle.year if vehicle else None,
-        listing_url=listing.url,
-        listing_price_pence=opp.listing_price_pence,
-        parts_cost_min_pence=opp.parts_cost_min_pence,
-        parts_cost_max_pence=opp.parts_cost_max_pence,
-        market_value_pence=opp.market_value_pence,
-        true_profit_pence=opp.true_profit_pence,
-        true_margin_pct=round(opp.true_margin_pct, 2),
-        total_man_days=opp.total_man_days,
-        opportunity_class=opp.opportunity_class,
-        risk_level=opp.risk_level,
-        write_off_category=opp.write_off_category,
-        has_unpriced_faults=opp.has_unpriced_faults,
+        **card.model_dump(),
+        image_urls=listing_image_urls(listing),
         unpriced_fault_types=opp.unpriced_fault_types or [],
-        profit_is_floor_estimate=opp.profit_is_floor_estimate,
-        market_value_confidence=opp.market_value_confidence,
-        market_value_comp_count=opp.market_value_comp_count,
-        created_at=opp.created_at.isoformat(),
-        saved=opp.saved,
-        marked_as_build=opp.marked_as_build,
         faults=fault_details,
         parts_breakdown=parts_breakdown,
         effort_cost_pence=opp.effort_cost_pence,

@@ -31,6 +31,7 @@ FIELDS REQUIRING AI INFERENCE (not available from eBay structured data):
 {missing_fields_display}
 
 Your tasks:
+0. Decide whether this listing sells a complete car or only a part/panel
 1. Infer any missing vehicle fields listed above from the title and description
 2. Identify ALL mechanical faults that need fixing — things that are broken,
    worn, or faulty RIGHT NOW
@@ -105,6 +106,7 @@ Return ONLY valid JSON, no other text:
       "fault_type": "<normalised_fault_type>",
       "severity": "critical|high|medium|low",
       "evidence": "<exact phrase from listing that indicates this fault>",
+      "explanation": "<one plain-English sentence a non-mechanic understands, max 20 words>",
       "confidence": 0.0-1.0
     }}
   ],
@@ -129,11 +131,27 @@ Return ONLY valid JSON, no other text:
   "driveable": true|false|null,
   "vagueness_signals": ["<phrase_1>", "<phrase_2>"],
   "overall_confidence": 0.0-1.0,
-  "trim": "<trim_level or null>"
+  "trim": "<trim_level or null>",
+  "listing_type": "whole_vehicle|parts_only|unclear",
+  "vehicle": {{
+    "make": "<string or null>",
+    "model": "<string or null>",
+    "year": <integer or null>,
+    "mileage": <integer or null>,
+    "fuel_type": "<string or null>",
+    "transmission": "<string or null>",
+    "body_type": "<string or null>"
+  }}
 }}
 
 Rules:
 - Never guess fault_type -- only include faults with evidence from the listing
+- listing_type: "parts_only" = the listing sells a component or panel (e.g. a wing,
+  a bumper, an engine), not a complete car. "unclear" only if you genuinely cannot tell.
+- vehicle: fill ONLY the fields listed under FIELDS REQUIRING AI INFERENCE. Use null
+  for every other field, and null when the listing does not say. Never guess.
+- explanation: describe what is wrong with THIS car in everyday words, based on the
+  seller's evidence. No jargon, no part numbers.
 - Use normalised fault type names matching the common_problems table
 - overall_confidence reflects how much useful signal the listing contains,
   not how good an opportunity it is (that is determined later in TASK_006)
@@ -147,6 +165,7 @@ STUB_AI_RESPONSE = {
             "fault_type": "timing_chain_failure",
             "severity": "high",
             "evidence": "timing chain rattle on cold start",
+            "explanation": "The engine rattles for a few seconds when started cold.",
             "confidence": 0.85,
         }
     ],
@@ -167,6 +186,16 @@ STUB_AI_RESPONSE = {
     "vagueness_signals": [],
     "overall_confidence": 0.8,
     "trim": None,
+    "listing_type": "whole_vehicle",
+    "vehicle": {
+        "make": None,
+        "model": None,
+        "year": None,
+        "mileage": None,
+        "fuel_type": None,
+        "transmission": None,
+        "body_type": None,
+    },
 }
 
 

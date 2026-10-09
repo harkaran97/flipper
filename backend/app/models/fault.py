@@ -18,6 +18,8 @@ class DetectedFault(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     severity: Mapped[str] = mapped_column(String(20), nullable=False)
     source: Mapped[str] = mapped_column(String(20), nullable=False)
+    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:
         return f"<DetectedFault(id={self.id}, issue={self.issue}, severity={self.severity})>"

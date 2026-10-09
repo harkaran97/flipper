@@ -32,8 +32,11 @@ class PartResult(BaseModel):
 
 class FaultDetail(BaseModel):
     fault_type: str
+    display_name: str = ""           # "Timing chain"
     severity: str
-    description: str | None
+    description: str | None          # generic, from common_problems
+    explanation: str | None = None   # plain English, about THIS car (AI)
+    seller_quote: str | None = None  # the seller's exact words (AI evidence)
     labour_days: float
 
 
@@ -54,6 +57,17 @@ class OpportunityCard(BaseModel):
     model: str
     year: int | None
     listing_url: str
+
+    # Display (TASK_040)
+    vehicle_name: str = ""           # "2015 Volkswagen Golf R"
+    image_url: str | None = None     # first photo, upscaled
+    mileage: int | None = None
+    location: str | None = None      # town, else outward postcode
+    distance_miles: int | None = None
+    listed_at: str | None = None     # ISO8601
+    fault_names: list[str] = []      # max 3, most severe first
+    fix_cost_pence: int = 0          # parts mid + labour: market − price − fix == profit
+    profit_is_best_case: bool = False  # no fault detected: profit assumes nothing else is wrong
 
     # Financials
     listing_price_pence: int
@@ -93,6 +107,17 @@ class OpportunityDetail(BaseModel):
     model: str
     year: int | None
     listing_url: str
+    # Display (TASK_040)
+    vehicle_name: str = ""           # "2015 Volkswagen Golf R"
+    image_url: str | None = None     # first photo, upscaled
+    mileage: int | None = None
+    location: str | None = None      # town, else outward postcode
+    distance_miles: int | None = None
+    listed_at: str | None = None     # ISO8601
+    fault_names: list[str] = []      # max 3, most severe first
+    fix_cost_pence: int = 0          # parts mid + labour: market − price − fix == profit
+    profit_is_best_case: bool = False  # no fault detected: profit assumes nothing else is wrong
+    image_urls: list[str] = []
     listing_price_pence: int
     parts_cost_min_pence: int
     parts_cost_max_pence: int
