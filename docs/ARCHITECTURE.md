@@ -406,6 +406,7 @@ Take: median of bottom 5 results
 | 9 | React Native iOS app (Expo) | ✅ |
 | 10 | Push notifications | 🔲 |
 | 11 | Multi-source parts pricing service (eBay + 4 scrapers, cache, adapter pattern) | ✅ |
+| 39 | Unbreak production: idempotent migration 014, crash-proof scheduler, 14-day feed window, honest /health | ✅ |
 
 ---
 
@@ -449,4 +450,4 @@ ALERT_DISTANCE_MILES=50
 
 ---
 
-*Last updated: Milestone 11 — Multi-source parts pricing service complete*
+*Last updated: Milestone 39 — Production unbroken (missing column, dead scheduler, stale feed)*

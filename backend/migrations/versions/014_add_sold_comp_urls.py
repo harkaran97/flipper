@@ -6,9 +6,7 @@ Create Date: 2026-03-30
 """
 from typing import Sequence, Union
 
-import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision: str = "014"
 down_revision: Union[str, None] = "013"
@@ -17,10 +15,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "market_values",
-        sa.Column("sold_comp_urls", postgresql.JSON(astext_type=sa.Text()), nullable=True),
-    )
+    op.execute("ALTER TABLE market_values ADD COLUMN IF NOT EXISTS sold_comp_urls JSON")
 
 
 def downgrade() -> None:

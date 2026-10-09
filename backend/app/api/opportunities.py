@@ -5,6 +5,7 @@ GET /opportunities  — ranked opportunity feed
 GET /opportunities/{opportunity_id}  — full opportunity detail
 """
 import logging
+from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -89,6 +90,7 @@ async def get_opportunities(
     filters = [
         Opportunity.opportunity_class != "exclude",
         Opportunity.true_margin_pct >= min_margin_pct,
+        Opportunity.created_at >= func.now() - timedelta(days=14),
     ]
     if max_man_days is not None:
         filters.append(Opportunity.total_man_days <= max_man_days)

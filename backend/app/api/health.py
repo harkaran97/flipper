@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter
 from sqlalchemy import text
 
@@ -5,6 +7,8 @@ from app.core.database import AsyncSessionLocal
 from config import settings
 
 router = APIRouter()
+
+INGESTION_STALE_AFTER = timedelta(hours=26)
 
 
 @router.get("/health")
@@ -27,12 +31,10 @@ async def health_check():
 
     from app.workers.ingestion_worker import last_poll_time
     health["last_poll"] = last_poll_time.isoformat() if last_poll_time else None
-    health["pipeline"] = {
-        "ingestion": "running",
-        "detection": "running",
-        "estimation": "running",
-        "valuation": "running",
-        "scoring": "running",
-    }
+    ingestion_stale = (
+        last_poll_time is None
+        or datetime.now(timezone.utc) - last_poll_time > INGESTION_STALE_AFTER
+    )
+    health["pipeline"] = {"ingestion": "stale" if ingestion_stale else "ok"}
 
     return health
