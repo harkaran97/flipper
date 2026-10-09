@@ -52,6 +52,9 @@ You are the senior backend engineer on Flipper, a UK car-flipping opportunity de
 - Always commit to DB BEFORE emitting bus events — never emit before commit
 - Stub/test data must include all dependent rows (Vehicle rows required for listings)
 - Railway requires explicit port config — never use env var interpolation in start commands
+- Long-running background loops (`asyncio.create_task`) must catch all exceptions inside the loop, including scheduling code — an escaped exception kills the task silently
+- Date arithmetic uses `timedelta`, never `.replace(day=day + 1)`
+- `/health` must only report what it actually measures
 
 ## React Native / Expo rules
 - Do NOT install new packages without checking Expo SDK 54 compatibility first
